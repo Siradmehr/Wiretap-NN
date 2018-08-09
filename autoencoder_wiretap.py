@@ -14,10 +14,6 @@ class AlwaysOnGaussianNoise(layers.GaussianNoise):
                                         mean=0.,
                                         stddev=self.stddev)
 
-def my_mse(y_true, y_pred):
-    print(y_true, y_pred)
-    return K.mean(K.square(y_pred - y_true), axis=-1)
-
 def loss_gauss_mix_entropy(y_true, y_pred, batch_size, dim, noise_pow=.5):
     #return K.variable(np.array([[1]]))
     #return K.max(y_true-y_pred)
@@ -50,23 +46,25 @@ def tensor_entropy_gauss_mix_upper(mu, sig, batch_size, dim):
 def tensor_norm_pdf(x, mu, sigma):
     dim = np.shape(sigma)[0]
     _factor = 1./(np.sqrt((2*np.pi)**dim*np.linalg.det(sigma)))
+    _log_factor = -.5*dim*(np.log(2*np.pi) + np.log(sigma[0,0]))
     _tensor_sig_inv = K.constant(np.linalg.inv(sigma), dtype='float32')
-   #_exp = K.exp(-.5*K.transpose(x-mu)*_tensor_sig_inv*(x-mu))
     _exponent = K.dot((x-mu), _tensor_sig_inv)
     #_exponent = K.dot(_exponent, K.transpose(x-mu))
     #_exponent = K.batch_dot(_exponent, (x-mu), axes=2)
     _exponent = K.batch_dot(_exponent, (x-mu), axes=1)
     _exp = K.exp(-.5*_exponent)
     return _factor*_exp
+    #return _log_factor-.5*_exponent
 
 def create_model(code_length:int =16, info_length: int =4, activation='relu',
                  symmetrical=True):
     rate = info_length/code_length
     #nodes_enc = [2*code_length, (info_length+code_length)//2, code_length]
     #nodes_enc = [2*code_length, code_length]
-    nodes_enc = [2*code_length, code_length]
+    nodes_enc = [2**info_length, 4*code_length, code_length]
     nodes_dec = [4*code_length, 2**info_length]
-    train_snr = {'bob': 10., 'eve': 0.}
+    #train_snr = {'bob': 0., 'eve': -5.}
+    train_snr = {'bob': 10., 'eve': 5.}
     train_snr_lin = {k: 10.**(v/10.) for k, v in train_snr.items()}
     input_power = 1.
     #train_noise = {k: input_power/(2.*rate*v) for k, v in train_snr_lin.items()}
@@ -82,6 +80,7 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     for idx, _nodes in enumerate(nodes_enc):
         _new_layer = layers.Dense(_nodes, activation=activation)(layer_list_enc[idx])
         layer_list_enc.append(_new_layer)
+    layer_list_enc.append(layers.BatchNormalization()(layer_list_enc[-1]))
     noise_layer_bob = noise_layers['bob'](layer_list_enc[-1])
     #noise_layer_eve = noise_layers['eve'](layer_list_enc[-1])
     layer_list_decoder = [noise_layer_bob]
@@ -98,13 +97,12 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     
     model = models.Model(inputs=[main_input],
                          outputs=[output_layer_bob, layer_list_enc[-1]])
-    model.compile('rmsprop', #loss_weights=[5., 1.],
-                  loss=['mse', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, nodes_enc[-1], noise_pow=train_noise['eve'])])
+    model.compile('adam', loss_weights=[.2, .8],
+                  loss=['binary_crossentropy', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, code_length, noise_pow=train_noise['eve'])])
                   #loss=['mse', 'mse'])
     #model = models.Model(inputs=[main_input], outputs=[output_layer_bob])
     #model.compile('adam', 'binary_crossentropy')
     return model
-
 
 def plot_history(history):
     epochs = history.epoch
@@ -116,15 +114,15 @@ def plot_history(history):
     axs.legend()
 
 def main():
-    n = 64
-    k = 6  # 4
-    model = create_model(n, k, symmetrical=False)
+    n = 16
+    k = 4
+    model = create_model(n, k, symmetrical=True)
     info_book = messages.generate_data(k, binary=True)
     print("Start training...")
     #target_eve = .5*np.ones(np.shape(info_book))
     target_eve = np.zeros((len(info_book), n))
     #target_eve = np.zeros((n,))
-    history = model.fit([info_book], [info_book, target_eve], epochs=600, verbose=0, batch_size=2**k)
+    history = model.fit([info_book], [info_book, target_eve], epochs=10000, verbose=0, batch_size=2**k)
     #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
     test_set = messages.generate_data(k, number=10000, binary=True)
     print("Start testing...")
@@ -133,8 +131,8 @@ def main():
     print("BER: {}".format(hamming_loss(np.ravel(test_set),
                                         np.ravel(pred_bit))))
     plot_history(history)
-    return history
+    return history, model
 
 if __name__ == "__main__":
-    history = main()
+    history, model = main()
     plt.show()
