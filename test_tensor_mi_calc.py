@@ -1,7 +1,7 @@
 import numpy as np
 from keras import backend as K
 
-from autoencoder_wiretap import tensor_entropy_gauss_mix_upper, tensor_norm_pdf
+from autoencoder_wiretap import tensor_entropy_gauss_mix_upper, tensor_norm_pdf, loss_gauss_mix_entropy
 
 
 def test_pdf():
@@ -47,6 +47,16 @@ def test_entropy():
     entr = tensor_entropy_gauss_mix_upper(mu, sig, batch_size, dim)
     print(K.eval(entr))
 
+def test_mi_loss():
+    x = np.array([[0, 1.2, 2.2], [-1., 2, -3]])
+    mu = np.array([[1.2, 2.2, 3], [-1.4, -2, -3]])
+    sig = np.array([[1, 0, 0], [0, 1., 0], [0., 0, 1]])
+    batch_size = np.shape(mu)[0]
+    dim = np.shape(mu)[1]
+    loss = loss_gauss_mix_entropy(0, x, batch_size, dim)
+    print(K.eval(loss))
+
 if __name__ == "__main__":
     #test_pdf()
-    test_entropy()
+    #test_entropy()
+    test_mi_loss()
