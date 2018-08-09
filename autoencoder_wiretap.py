@@ -8,6 +8,12 @@ from keras import backend as K
 
 from digcommpy import messages
 
+class AlwaysOnGaussianNoise(layers.GaussianNoise):
+    def call(self, inputs, training=None):
+        return inputs + K.random_normal(shape=K.shape(inputs),
+                                        mean=0.,
+                                        stddev=self.stddev)
+
 def my_mse(y_true, y_pred):
     print(y_true, y_pred)
     return K.mean(K.square(y_pred - y_true), axis=-1)
@@ -57,13 +63,17 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
                  symmetrical=True):
     rate = info_length/code_length
     #nodes_enc = [2*code_length, (info_length+code_length)//2, code_length]
+    #nodes_enc = [2*code_length, code_length]
     nodes_enc = [2*code_length, code_length]
-    nodes_dec = []
-    train_snr = {'bob': 5., 'eve': 0.}
+    nodes_dec = [4*code_length, 2**info_length]
+    train_snr = {'bob': 10., 'eve': 0.}
     train_snr_lin = {k: 10.**(v/10.) for k, v in train_snr.items()}
     input_power = 1.
-    train_noise = {k: input_power/(2.*rate*v) for k, v in train_snr_lin.items()}
-    noise_layers = {k: layers.GaussianNoise(v, input_shape=(code_length,))
+    #train_noise = {k: input_power/(2.*rate*v) for k, v in train_snr_lin.items()}
+    train_noise = {k: input_power/(v) for k, v in train_snr_lin.items()}
+    #noise_layers = {k: layers.GaussianNoise(v, input_shape=(code_length,))
+    #                for k, v in train_noise.items()}
+    noise_layers = {k: AlwaysOnGaussianNoise(v, input_shape=(code_length,))
                     for k, v in train_noise.items()}
     if symmetrical:
         nodes_dec = reversed(nodes_enc)
@@ -88,10 +98,11 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     
     model = models.Model(inputs=[main_input],
                          outputs=[output_layer_bob, layer_list_enc[-1]])
-    model.compile('adam', loss_weights=[1., 1.],
-                  loss=['binary_crossentropy', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, nodes_enc[-1], noise_pow=train_noise['eve'])])
-    #model.compile('adam', loss_weights=[1., 1.],
-    #              loss=['binary_crossentropy', 'mse'])
+    model.compile('rmsprop', #loss_weights=[5., 1.],
+                  loss=['mse', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, nodes_enc[-1], noise_pow=train_noise['eve'])])
+                  #loss=['mse', 'mse'])
+    #model = models.Model(inputs=[main_input], outputs=[output_layer_bob])
+    #model.compile('adam', 'binary_crossentropy')
     return model
 
 
@@ -105,15 +116,16 @@ def plot_history(history):
     axs.legend()
 
 def main():
-    n = 16
-    k = 8  # 4
-    model = create_model(n, k)
+    n = 64
+    k = 6  # 4
+    model = create_model(n, k, symmetrical=False)
     info_book = messages.generate_data(k, binary=True)
     print("Start training...")
     #target_eve = .5*np.ones(np.shape(info_book))
     target_eve = np.zeros((len(info_book), n))
     #target_eve = np.zeros((n,))
-    history = model.fit([info_book], [info_book, target_eve], epochs=200, verbose=0, batch_size=len(info_book))
+    history = model.fit([info_book], [info_book, target_eve], epochs=600, verbose=0, batch_size=2**k)
+    #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
     test_set = messages.generate_data(k, number=10000, binary=True)
     print("Start testing...")
     pred = model.predict(test_set)[0]
