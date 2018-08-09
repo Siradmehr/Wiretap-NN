@@ -6,26 +6,6 @@ from keras import layers
 from keras import backend as K
 
 from digcommpy import messages
-from gauss_mix_entropy import entropy_gauss_mix_upper
-
-def mutual_info_eve(x, noise_pow=5.):
-    #_shape = K.eval(K.shape(x))
-    #_shape = x.shape
-    _shape = K.int_shape(x)
-    #n_comp, n_dim = _shape
-    n_dim = _shape[1]
-    entr_noise = .5*np.log2(2*np.pi*np.e*noise_pow*n_dim)
-    #mu = K.get_value(x)
-    mu = x
-    print(mu)
-    #sigma = [noise_pow*np.eye(n_dim)]#*n_comp
-    sigma = noise_pow * np.eye(n_dim)
-    entr_gauss_mix = entropy_gauss_mix_upper(mu, sigma)
-    #mutual_info = entr_gauss_mix - entr_noise
-    #return K.variable(np.array([[mutual_info]]))
-    #return x
-    return K.variable(np.array([entr_gauss_mix]))
-
 
 def loss_gauss_mix_entropy(y_true, y_pred, batch_size, dim, noise_pow=.5):
     #return K.variable(np.array([[1]]))
@@ -41,19 +21,17 @@ def tensor_entropy_gauss_mix_upper(mu, sig, batch_size, dim):
     """
     #weights = np.ones(batch_size, dtype=float)/batch_size
     weight = 1./batch_size
-
-    outer_sum = 0
-    #for idx_i, c_i in enumerate(weights):
-    for mu_i in mu:
-        print(mu_i)
-        inner_sum = 0
-        #for idx_j, c_j in enumerate(weights):
-        for mu_j in mu:
-            _pdf_j = tensor_norm_pdf(mu_i, mu_j, sig)
-            inner_sum = weight * K.sum(_pdf_j)
-            #inner_sum += weight*_pdf_j
-        outer_sum += weight*K.log(inner_sum)
-
+    x = K.variable(value=mu)
+    x = K.repeat_elements(x, batch_size, axis=0)
+    #x = K.repeat(x, batch_size)
+    mu = K.variable(value=mu)
+    mu = K.tile(mu, (batch_size, 1))
+    #mu = K.reshape(mu, (batch_size, batch_size, -1))
+    norm = tensor_norm_pdf(x, mu, sig)
+    norm = K.reshape(norm, (batch_size, batch_size, -1))
+    inner_sums = K.sum(weight*norm, axis=1, keepdims=True)
+    log_inner = K.log(inner_sums)
+    outer_sum = K.sum(weight*log_inner, axis=0)
     entropy_kl = dim/2 - outer_sum
     return entropy_kl
 
@@ -64,6 +42,7 @@ def tensor_norm_pdf(x, mu, sigma):
    #_exp = K.exp(-.5*K.transpose(x-mu)*_tensor_sig_inv*(x-mu))
     _exponent = K.dot((x-mu), _tensor_sig_inv)
     #_exponent = K.dot(_exponent, K.transpose(x-mu))
+    #_exponent = K.batch_dot(_exponent, (x-mu), axes=2)
     _exponent = K.batch_dot(_exponent, (x-mu), axes=1)
     _exp = K.exp(-.5*_exponent)
     return _factor*_exp
