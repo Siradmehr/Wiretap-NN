@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use("qt5agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import multivariate_normal
@@ -97,7 +99,7 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     
     model = models.Model(inputs=[main_input],
                          outputs=[output_layer_bob, layer_list_enc[-1]])
-    model.compile('adam', loss_weights=[.2, .8],
+    model.compile('adam', loss_weights=[.8, .2],
                   loss=['binary_crossentropy', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, code_length, noise_pow=train_noise['eve'])])
                   #loss=['mse', 'mse'])
     #model = models.Model(inputs=[main_input], outputs=[output_layer_bob])
@@ -112,6 +114,9 @@ def plot_history(history):
     for loss_name, loss_val in hist_loss.items():
         axs.plot(epochs, loss_val, label=loss_name)
     axs.legend()
+    axs.set_xlabel("Training Epoch")
+    axs.set_ylabel("Loss Value")
+    axs.set_title("N=16, k=4, SNR_Bob=10dB, SNR_Eve=5dB\nweight_Bob=0.5, weight_Eve=0.5")
 
 def main():
     n = 16
@@ -122,8 +127,9 @@ def main():
     #target_eve = .5*np.ones(np.shape(info_book))
     target_eve = np.zeros((len(info_book), n))
     #target_eve = np.zeros((n,))
-    history = model.fit([info_book], [info_book, target_eve], epochs=10000, verbose=0, batch_size=2**k)
+    history = model.fit([info_book], [info_book, target_eve], epochs=40000, verbose=0, batch_size=2**k)
     #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
+    #return history, model
     test_set = messages.generate_data(k, number=10000, binary=True)
     print("Start testing...")
     pred = model.predict(test_set)[0]
