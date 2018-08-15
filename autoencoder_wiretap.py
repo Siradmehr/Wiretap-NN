@@ -1,5 +1,3 @@
-import matplotlib
-matplotlib.use("qt5agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import multivariate_normal
@@ -59,7 +57,7 @@ def tensor_norm_pdf(x, mu, sigma):
     #return _log_factor-.5*_exponent
 
 def create_model(code_length:int =16, info_length: int =4, activation='relu',
-                 symmetrical=True):
+                 symmetrical=True, loss_weights=[.5, .5]):
     rate = info_length/code_length
     #nodes_enc = [2*code_length, (info_length+code_length)//2, code_length]
     #nodes_enc = [2*code_length, code_length]
@@ -82,7 +80,7 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     for idx, _nodes in enumerate(nodes_enc):
         _new_layer = layers.Dense(_nodes, activation=activation)(layer_list_enc[idx])
         layer_list_enc.append(_new_layer)
-    layer_list_enc.append(layers.BatchNormalization()(layer_list_enc[-1]))
+    layer_list_enc.append(layers.BatchNormalization(name='codewords')(layer_list_enc[-1]))
     noise_layer_bob = noise_layers['bob'](layer_list_enc[-1])
     #noise_layer_eve = noise_layers['eve'](layer_list_enc[-1])
     layer_list_decoder = [noise_layer_bob]
@@ -99,7 +97,7 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     
     model = models.Model(inputs=[main_input],
                          outputs=[output_layer_bob, layer_list_enc[-1]])
-    model.compile('adam', loss_weights=[.8, .2],
+    model.compile('adam', loss_weights=loss_weights,#loss_weights=[.8, .2],
                   loss=['binary_crossentropy', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, code_length, noise_pow=train_noise['eve'])])
                   #loss=['mse', 'mse'])
     #model = models.Model(inputs=[main_input], outputs=[output_layer_bob])
@@ -121,21 +119,36 @@ def plot_history(history):
 def main():
     n = 16
     k = 4
-    model = create_model(n, k, symmetrical=True)
     info_book = messages.generate_data(k, binary=True)
-    print("Start training...")
+    test_set = messages.generate_data(k, number=10000, binary=True)
     #target_eve = .5*np.ones(np.shape(info_book))
     target_eve = np.zeros((len(info_book), n))
     #target_eve = np.zeros((n,))
-    history = model.fit([info_book], [info_book, target_eve], epochs=40000, verbose=0, batch_size=2**k)
-    #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
-    #return history, model
-    test_set = messages.generate_data(k, number=10000, binary=True)
-    print("Start testing...")
-    pred = model.predict(test_set)[0]
-    pred_bit = np.round(pred)
-    print("BER: {}".format(hamming_loss(np.ravel(test_set),
-                                        np.ravel(pred_bit))))
+    loss_weights = [[0., 1.], [.1, .9], [.2, .8], [.3, .7], [.4, .6], [.5, .5], [.6, .4],
+                    [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
+    results_file = 'loss_weight_combinations.dat'
+    with open(results_file, 'w') as outf:
+        outf.write("wB\twE\tBER\tLeak\tLoss\n")
+    for combination in loss_weights:
+        print("Loss weight combination: {}".format(combination))
+        model = create_model(n, k, symmetrical=True, loss_weights=combination)
+        #print("Start training...")
+        history = model.fit([info_book], [info_book, target_eve], epochs=40000,
+                            verbose=0, batch_size=2**k)
+        #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
+        #return history, model
+        #print("Start testing...")
+        pred = model.predict(test_set)[0]
+        pred_bit = np.round(pred)
+        ber = hamming_loss(np.ravel(test_set), np.ravel(pred_bit))
+        leak = history.history['codewords_loss'][-1]
+        total_loss = history.history['loss'][-1]
+        print("BER:\t{}".format(ber))
+        print("Leakage:\t{}".format(leak))
+        print("Loss:\t{}\n".format(total_loss))
+        with open(results_file, 'a') as outf:
+            outf.write("{}\t{}\t{}\t{}\t{}\n".format(
+                *combination, ber, leak, total_loss))
     plot_history(history)
     return history, model
 
