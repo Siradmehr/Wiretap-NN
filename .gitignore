@@ -36,6 +36,8 @@ obj/
 *.db
 report.html
 *.dat
+*.back
+*.bak
 
 # OS generated files #
 ######################

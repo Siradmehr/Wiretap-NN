@@ -35,18 +35,29 @@ def tensor_entropy_gauss_mix_upper(mu, sig, batch_size, dim):
     #mu = K.variable(value=mu)
     mu = K.tile(mu, (batch_size, 1))
     #mu = K.reshape(mu, (batch_size, batch_size, -1))
-    norm = tensor_norm_pdf(x, mu, sig)
-    norm = K.reshape(norm, (batch_size, batch_size, -1))
-    inner_sums = K.sum(weight*norm, axis=1, keepdims=True)
-    log_inner = K.log(inner_sums)
+    #norm = tensor_norm_pdf(x, mu, sig)
+    #norm = K.reshape(norm, (batch_size, batch_size, -1))
+    #inner_sums = K.sum(weight*norm, axis=1, keepdims=True)
+    #log_inner = K.log(inner_sums)
+    dim = np.shape(sig)[0]
+    _factor = 1./(np.sqrt((2*np.pi)**dim*np.linalg.det(sig)))
+    norm_exp = tensor_norm_pdf_exponent(x, mu, sig)
+    norm_exp = K.reshape(norm_exp, (batch_size, batch_size, -1))
+    log_inner = np.log(weight*_factor) + K.logsumexp(norm_exp, axis=1, keepdims=True)
     outer_sum = K.sum(weight*log_inner, axis=0)
     entropy_kl = dim/2 - outer_sum
     return entropy_kl
 
+def tensor_norm_pdf_exponent(x, mu, sigma):
+    _tensor_sig_inv = K.constant(np.linalg.inv(sigma), dtype='float32')
+    _exponent = K.dot((x-mu), _tensor_sig_inv)
+    _exponent = K.batch_dot(_exponent, (x-mu), axes=1)
+    _exponent = -.5*_exponent
+    return _exponent
+
 def tensor_norm_pdf(x, mu, sigma):
     dim = np.shape(sigma)[0]
     _factor = 1./(np.sqrt((2*np.pi)**dim*np.linalg.det(sigma)))
-    _log_factor = -.5*dim*(np.log(2*np.pi) + np.log(sigma[0,0]))
     _tensor_sig_inv = K.constant(np.linalg.inv(sigma), dtype='float32')
     _exponent = K.dot((x-mu), _tensor_sig_inv)
     #_exponent = K.dot(_exponent, K.transpose(x-mu))
@@ -54,24 +65,24 @@ def tensor_norm_pdf(x, mu, sigma):
     _exponent = K.batch_dot(_exponent, (x-mu), axes=1)
     _exp = K.exp(-.5*_exponent)
     return _factor*_exp
-    #return _log_factor-.5*_exponent
 
 def create_model(code_length:int =16, info_length: int =4, activation='relu',
-                 symmetrical=True, loss_weights=[.5, .5]):
+                 symmetrical=True, loss_weights=[.5, .5],
+                 train_snr={'bob': 0., 'eve': -5.}):
     rate = info_length/code_length
     #nodes_enc = [2*code_length, (info_length+code_length)//2, code_length]
     #nodes_enc = [2*code_length, code_length]
     nodes_enc = [2**info_length, 4*code_length, code_length]
     nodes_dec = [4*code_length, 2**info_length]
     #train_snr = {'bob': 0., 'eve': -5.}
-    train_snr = {'bob': 10., 'eve': 5.}
+    #train_snr = {'bob': 10., 'eve': 5.}
     train_snr_lin = {k: 10.**(v/10.) for k, v in train_snr.items()}
     input_power = 1.
     #train_noise = {k: input_power/(2.*rate*v) for k, v in train_snr_lin.items()}
     train_noise = {k: input_power/(v) for k, v in train_snr_lin.items()}
-    #noise_layers = {k: layers.GaussianNoise(v, input_shape=(code_length,))
+    #noise_layers = {k: layers.GaussianNoise(np.sqrt(v), input_shape=(code_length,))
     #                for k, v in train_noise.items()}
-    noise_layers = {k: AlwaysOnGaussianNoise(v, input_shape=(code_length,))
+    noise_layers = {k: AlwaysOnGaussianNoise(np.sqrt(v), input_shape=(code_length,))
                     for k, v in train_noise.items()}
     if symmetrical:
         nodes_dec = reversed(nodes_enc)
@@ -116,28 +127,30 @@ def plot_history(history):
     axs.set_ylabel("Loss Value")
     axs.set_title("N=16, k=4, SNR_Bob=10dB, SNR_Eve=5dB\nweight_Bob=0.5, weight_Eve=0.5")
 
-def main():
-    n = 16
-    k = 4
+def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
     info_book = messages.generate_data(k, binary=True)
     test_set = messages.generate_data(k, number=10000, binary=True)
     #target_eve = .5*np.ones(np.shape(info_book))
     target_eve = np.zeros((len(info_book), n))
     #target_eve = np.zeros((n,))
-    loss_weights = [[0., 1.], [.1, .9], [.2, .8], [.3, .7], [.4, .6], [.5, .5], [.6, .4],
-                    [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
-    results_file = 'loss_weight_combinations.dat'
+    loss_weights = [[0., 1.], [.1, .9], [.2, .8], [.3, .7], [.4, .6], [.5, .5],
+                    [.6, .4], [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
+    results_file = 'loss_weight_combinations-B{bob}E{eve}-T{0}.dat'.format(test_snr, **train_snr)
     with open(results_file, 'w') as outf:
         outf.write("wB\twE\tBER\tLeak\tLoss\n")
     for combination in loss_weights:
         print("Loss weight combination: {}".format(combination))
-        model = create_model(n, k, symmetrical=True, loss_weights=combination)
+        model = create_model(n, k, symmetrical=True, loss_weights=combination,
+                             train_snr=train_snr)
         #print("Start training...")
         history = model.fit([info_book], [info_book, target_eve], epochs=40000,
                             verbose=0, batch_size=2**k)
         #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
         #return history, model
         #print("Start testing...")
+        idx_noise_layer = [type(t) == AlwaysOnGaussianNoise for t in model.layers].index(True)
+        test_noise = 1./10**(test_snr/10.)
+        model.layers[idx_noise_layer].stddev = np.sqrt(test_noise)
         pred = model.predict(test_set)[0]
         pred_bit = np.round(pred)
         ber = hamming_loss(np.ravel(test_set), np.ravel(pred_bit))
