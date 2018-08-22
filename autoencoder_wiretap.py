@@ -14,14 +14,14 @@ class AlwaysOnGaussianNoise(layers.GaussianNoise):
                                         mean=0.,
                                         stddev=self.stddev)
 
-def loss_gauss_mix_entropy(y_true, y_pred, batch_size, dim, noise_pow=.5):
+def loss_gauss_mix_entropy(y_true, y_pred, batch_size, dim, noise_pow=.5, k=1):
     #return K.variable(np.array([[1]]))
     #return K.max(y_true-y_pred)
     sigma = noise_pow * np.eye(dim)
     entr_gauss_mix = tensor_entropy_gauss_mix_upper(y_pred, sigma, batch_size, dim)
     entr_gauss_mix = K.repeat_elements(entr_gauss_mix, batch_size, 0)
     entr_noise = .5*np.log((2*np.pi*np.e)**dim*np.linalg.det(sigma))
-    return K.mean(entr_gauss_mix - entr_noise, axis=-1)
+    return K.mean(entr_gauss_mix - entr_noise, axis=-1)/(np.log(2)*k)
 
 def tensor_entropy_gauss_mix_upper(mu, sig, batch_size, dim):
     """Calculate the upper bound of the gaussian mixture entropy using the 
@@ -109,7 +109,7 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     model = models.Model(inputs=[main_input],
                          outputs=[output_layer_bob, layer_list_enc[-1]])
     model.compile('adam', loss_weights=loss_weights,#loss_weights=[.8, .2],
-                  loss=['binary_crossentropy', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, code_length, noise_pow=train_noise['eve'])])
+                  loss=['binary_crossentropy', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, code_length, noise_pow=train_noise['eve'], k=info_length)])
                   #loss=['mse', 'mse'])
     #model = models.Model(inputs=[main_input], outputs=[output_layer_bob])
     #model.compile('adam', 'binary_crossentropy')
@@ -133,17 +133,19 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
     #target_eve = .5*np.ones(np.shape(info_book))
     target_eve = np.zeros((len(info_book), n))
     #target_eve = np.zeros((n,))
-    loss_weights = [[0., 1.], [.1, .9], [.2, .8], [.3, .7], [.4, .6], [.5, .5],
-                    [.6, .4], [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
+    #loss_weights = [[0., 1.], [.1, .9], [.2, .8], [.3, .7], [.4, .6], [.5, .5],
+    #                [.6, .4], [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
+    _weights = np.linspace(0, .4, 10)
+    #loss_weights = [[1.-k, k] for k in _weights]
     results_file = 'loss_weight_combinations-B{bob}E{eve}-T{0}.dat'.format(test_snr, **train_snr)
     with open(results_file, 'w') as outf:
         outf.write("wB\twE\tBER\tLeak\tLoss\n")
     for combination in loss_weights:
         print("Loss weight combination: {}".format(combination))
-        model = create_model(n, k, symmetrical=True, loss_weights=combination,
-                             train_snr=train_snr)
+        model = create_model(n, k, symmetrical=False, loss_weights=combination,
+                             train_snr=train_snr, activation='sigmoid')
         #print("Start training...")
-        history = model.fit([info_book], [info_book, target_eve], epochs=40000,
+        history = model.fit([info_book], [info_book, target_eve], epochs=10000,
                             verbose=0, batch_size=2**k)
         #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
         #return history, model
@@ -157,7 +159,7 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
         leak = history.history['codewords_loss'][-1]
         total_loss = history.history['loss'][-1]
         print("BER:\t{}".format(ber))
-        print("Leakage:\t{}".format(leak))
+        print("Leakage:\t{}".format(leak*k))
         print("Loss:\t{}\n".format(total_loss))
         with open(results_file, 'a') as outf:
             outf.write("{}\t{}\t{}\t{}\t{}\n".format(
@@ -166,5 +168,6 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
     return history, model
 
 if __name__ == "__main__":
-    history, model = main()
+    train_snr = {'bob': 5., 'eve': 0.}
+    history, model = main(k=6, train_snr=train_snr)
     plt.show()

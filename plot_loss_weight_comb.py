@@ -18,11 +18,11 @@ def read_file(filename):
 
 def plot_results(results):
     fig, ax1 = plt.subplots()
-    ax1.plot(results[:, 1], results[:, 3], '-r', label='Leakage')
+    ax1.plot(results[:, 1], results[:, 3], 'o-r', label='Leakage')
     ax1.set_xlabel("Leakage importance")
-    ax1.set_ylabel("Leakage")
+    ax1.set_ylabel("Leakage/bit")
     ax2 = ax1.twinx()
-    ax2.semilogy(results[:, 1], results[:, 2], '-g', label="BER")
+    ax2.semilogy(results[:, 1], results[:, 2], 'o-g', label="BER")
     ax2.set_ylabel("BER")
     fig.legend()
     fig.tight_layout()
