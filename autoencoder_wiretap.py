@@ -127,6 +127,30 @@ def plot_history(history):
     axs.set_ylabel("Loss Value")
     axs.set_title("N=16, k=4, SNR_Bob=10dB, SNR_Eve=5dB\nweight_Bob=0.5, weight_Eve=0.5")
 
+def single_main(n, k, snr_bob, snr_eve, test_snr, loss_weights=[.5, .5]):
+    info_book = messages.generate_data(k, binary=True)
+    test_set = messages.generate_data(k, number=10000, binary=True)
+    #target_eve = .5*np.ones(np.shape(info_book))
+    target_eve = np.zeros((len(info_book), n))
+
+    model = create_model(n, k, symmetrical=False, loss_weights=loss_weights,
+                         train_snr={'bob': snr_bob, 'eve': snr_eve},
+                         activation='sigmoid')
+    history = model.fit([info_book], [info_book, target_eve], epochs=10000,
+                        verbose=0, batch_size=2**k)
+    idx_noise_layer = [type(t) == AlwaysOnGaussianNoise for t in model.layers].index(True)
+    test_noise = 1./10**(test_snr/10.)
+    model.layers[idx_noise_layer].stddev = np.sqrt(test_noise)
+    pred = model.predict(test_set)[0]
+    pred_bit = np.round(pred)
+    ber = hamming_loss(np.ravel(test_set), np.ravel(pred_bit))
+    leak = history.history['codewords_loss'][-1]
+    total_loss = history.history['loss'][-1]
+    print("BER:\t{}".format(ber))
+    print("Leak:\t{}".format(leak*k))
+    print("Loss:\t{}\n".format(total_loss))
+    return ber, leak*k
+
 def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
     info_book = messages.generate_data(k, binary=True)
     test_set = messages.generate_data(k, number=10000, binary=True)
@@ -135,8 +159,8 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
     #target_eve = np.zeros((n,))
     #loss_weights = [[0., 1.], [.1, .9], [.2, .8], [.3, .7], [.4, .6], [.5, .5],
     #                [.6, .4], [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
-    _weights = np.linspace(0, .4, 10)
-    #loss_weights = [[1.-k, k] for k in _weights]
+    _weights = np.linspace(0, .5, 10)
+    loss_weights = [[1.-k, k] for k in _weights]
     results_file = 'loss_weight_combinations-B{bob}E{eve}-T{0}.dat'.format(test_snr, **train_snr)
     with open(results_file, 'w') as outf:
         outf.write("wB\twE\tBER\tLeak\tLoss\n")
@@ -145,7 +169,7 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
         model = create_model(n, k, symmetrical=False, loss_weights=combination,
                              train_snr=train_snr, activation='sigmoid')
         #print("Start training...")
-        history = model.fit([info_book], [info_book, target_eve], epochs=10000,
+        history = model.fit([info_book], [info_book, target_eve], epochs=15000,
                             verbose=0, batch_size=2**k)
         #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
         #return history, model
@@ -159,7 +183,7 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
         leak = history.history['codewords_loss'][-1]
         total_loss = history.history['loss'][-1]
         print("BER:\t{}".format(ber))
-        print("Leakage:\t{}".format(leak*k))
+        print("Leak:\t{}".format(leak*k))
         print("Loss:\t{}\n".format(total_loss))
         with open(results_file, 'a') as outf:
             outf.write("{}\t{}\t{}\t{}\t{}\n".format(

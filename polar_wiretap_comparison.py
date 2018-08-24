@@ -16,7 +16,9 @@ def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5.):
     encoder = encoders.PolarWiretapEncoder(n, channel, channel,
                                            snr_bob, snr_eve)
     k = encoder.info_length
-    print(encoder.info_length, encoder.info_length_bob)
+    print("k={}\tk_bob={}".format(encoder.info_length, encoder.info_length_bob))
+    if k > 10:
+        return -1, -1, k
     decoder = decoders.PolarWiretapDecoder(n, 'BAWGN', test_snr,
                                            pos_lookup=encoder.pos_lookup)
     modulator = modulators.BpskModulator()
@@ -34,7 +36,8 @@ def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5.):
     pred_info = decoder.decode_messages(rec_mod, channel)
     ber = metrics.ber(test_set, pred_info)
     print("BER:\t{}\nLeak:\t{}".format(ber, leak))
+    return ber, leak, k
 
 
 if __name__ == "__main__":
-    main()
+    results = main()
