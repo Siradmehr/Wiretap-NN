@@ -38,6 +38,7 @@ report.html
 *.dat
 *.back
 *.bak
+data/
 
 # OS generated files #
 ######################

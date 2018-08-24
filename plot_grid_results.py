@@ -1,3 +1,4 @@
+import os.path
 import argparse
 from datetime import datetime
 
@@ -10,6 +11,7 @@ import matplotlib.colors as colors
 def _write_results_to_file(results, name, n):
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     filename = "{}-{}-n{}.dat".format(timestamp, name, n)
+    filename = os.path.join('data', filename)
     with open(filename, 'w') as outfile:
         outfile.write("Bob\tEve\tBER\tLeak\tk\n")
         for snr_combination, values in results.items():

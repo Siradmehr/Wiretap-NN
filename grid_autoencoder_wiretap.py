@@ -21,7 +21,9 @@ def run_grid_simulation(ref_results, n):
         snr_bob, snr_eve = row.Bob, row.Eve
         k = row.k
         print("Bob: {}, Eve: {}\tk={}".format(snr_bob, snr_eve, k))
-        ber, leak = autoencoder_wiretap.single_main(n, k, 2., snr_eve, snr_bob)
+        #ber, leak = autoencoder_wiretap.single_main(n, k, 2., snr_eve, snr_bob,
+        ber, leak = autoencoder_wiretap.single_main(n, k, snr_bob, snr_eve, snr_bob,
+            loss_weights=[.65, .35])
         results[(snr_bob, snr_eve)] = [ber, leak, k]
     return results
 
