@@ -14,6 +14,22 @@ class AlwaysOnGaussianNoise(layers.GaussianNoise):
                                         mean=0.,
                                         stddev=self.stddev)
 
+def _hard_sigmoid(x):
+    #x = (5.*x)-2
+    x = (2.5*x)-(2.5*.3)
+    #zero = _to_tensor(0., x.dtype.base_dtype)
+    #one = _to_tensor(1., x.dtype.base_dtype)
+    x = K.clip(x, 0, 1)
+    return x
+
+def _fake_not_equal(y_true, y_pred):
+    return 1.-K.exp(-20*K.abs(y_true-y_pred))
+
+def loss_ber(y_true, y_pred):
+    return K.mean(_fake_not_equal(y_true, _hard_sigmoid(y_pred)))*2.  # to normalize
+    #return K.mean(K.not_equal(K.round(y_pred), y_true))*2.  # to normalize
+
+
 def loss_gauss_mix_entropy(y_true, y_pred, batch_size, dim, noise_pow=.5, k=1):
     #return K.variable(np.array([[1]]))
     #return K.max(y_true-y_pred)
@@ -72,8 +88,10 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     rate = info_length/code_length
     #nodes_enc = [2*code_length, (info_length+code_length)//2, code_length]
     #nodes_enc = [2*code_length, code_length]
-    nodes_enc = [2**info_length, 4*code_length, code_length]
-    nodes_dec = [4*code_length, 2**info_length]
+    #nodes_enc = [2**info_length, 4*code_length, code_length]
+    nodes_enc = [8*code_length, code_length]
+    nodes_dec = [8*code_length]
+    #nodes_dec = [4*code_length, 2**info_length]
     #train_snr = {'bob': 0., 'eve': -5.}
     #train_snr = {'bob': 10., 'eve': 5.}
     train_snr_lin = {k: 10.**(v/10.) for k, v in train_snr.items()}
@@ -109,8 +127,8 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     model = models.Model(inputs=[main_input],
                          outputs=[output_layer_bob, layer_list_enc[-1]])
     model.compile('adam', loss_weights=loss_weights,#loss_weights=[.8, .2],
-                  loss=['binary_crossentropy', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, code_length, noise_pow=train_noise['eve'], k=info_length)])
-                  #loss=['mse', 'mse'])
+                  #loss=['binary_crossentropy', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, code_length, noise_pow=train_noise['eve'], k=info_length)])
+                  loss=['mse', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, code_length, noise_pow=train_noise['eve'], k=info_length)])
     #model = models.Model(inputs=[main_input], outputs=[output_layer_bob])
     #model.compile('adam', 'binary_crossentropy')
     return model
@@ -159,7 +177,7 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
     #target_eve = np.zeros((n,))
     #loss_weights = [[0., 1.], [.1, .9], [.2, .8], [.3, .7], [.4, .6], [.5, .5],
     #                [.6, .4], [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
-    _weights = np.linspace(0, .5, 10)
+    _weights = np.linspace(0.12, .13, 10)
     loss_weights = [[1.-k, k] for k in _weights]
     results_file = 'loss_weight_combinations-B{bob}E{eve}-T{0}.dat'.format(test_snr, **train_snr)
     with open(results_file, 'w') as outf:
@@ -169,7 +187,7 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
         model = create_model(n, k, symmetrical=False, loss_weights=combination,
                              train_snr=train_snr, activation='sigmoid')
         #print("Start training...")
-        history = model.fit([info_book], [info_book, target_eve], epochs=15000,
+        history = model.fit([info_book], [info_book, target_eve], epochs=5000,
                             verbose=0, batch_size=2**k)
         #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
         #return history, model
@@ -192,6 +210,6 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
     return history, model
 
 if __name__ == "__main__":
-    train_snr = {'bob': 5., 'eve': 0.}
-    history, model = main(k=6, train_snr=train_snr)
+    train_snr = {'bob': 2., 'eve': 2.}
+    history, model = main(k=5, train_snr=train_snr, test_snr=7)
     plt.show()
