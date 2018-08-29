@@ -36,7 +36,8 @@ def loss_gauss_mix_entropy(y_true, y_pred, batch_size, dim, noise_pow=.5, k=1):
     sigma = noise_pow * np.eye(dim)
     entr_gauss_mix = tensor_entropy_gauss_mix_upper(y_pred, sigma, batch_size, dim)
     entr_gauss_mix = K.repeat_elements(entr_gauss_mix, batch_size, 0)
-    entr_noise = .5*np.log((2*np.pi*np.e)**dim*np.linalg.det(sigma))
+    #entr_noise = .5*np.log((2*np.pi*np.e)**dim*np.linalg.det(sigma))
+    entr_noise = .5*dim*np.log(2*np.pi*np.e*noise_pow)
     return K.mean(entr_gauss_mix - entr_noise, axis=-1)/(np.log(2)*k)
 
 def tensor_entropy_gauss_mix_upper(mu, sig, batch_size, dim):
@@ -56,10 +57,12 @@ def tensor_entropy_gauss_mix_upper(mu, sig, batch_size, dim):
     #inner_sums = K.sum(weight*norm, axis=1, keepdims=True)
     #log_inner = K.log(inner_sums)
     dim = np.shape(sig)[0]
-    _factor = 1./(np.sqrt((2*np.pi)**dim*np.linalg.det(sig)))
+    #_factor = 1./(np.sqrt((2*np.pi)**dim*np.linalg.det(sig)))
+    _factor_log = -(dim/2)*(2*np.pi*sig[0, 0])
     norm_exp = tensor_norm_pdf_exponent(x, mu, sig)
     norm_exp = K.reshape(norm_exp, (batch_size, batch_size, -1))
-    log_inner = np.log(weight*_factor) + K.logsumexp(norm_exp, axis=1, keepdims=True)
+    #log_inner = np.log(weight*_factor) + K.logsumexp(norm_exp, axis=1, keepdims=True)
+    log_inner = np.log(weight) + _factor_log + K.logsumexp(norm_exp, axis=1, keepdims=True)
     outer_sum = K.sum(weight*log_inner, axis=0)
     entropy_kl = dim/2 - outer_sum
     return entropy_kl
@@ -177,7 +180,8 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
     #target_eve = np.zeros((n,))
     #loss_weights = [[0., 1.], [.1, .9], [.2, .8], [.3, .7], [.4, .6], [.5, .5],
     #                [.6, .4], [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
-    _weights = np.linspace(0.12, .13, 10)
+    #_weights = np.linspace(0.13, .14, 5)  # 5000 epochs
+    _weights = np.linspace(0.1, .9, 10)
     loss_weights = [[1.-k, k] for k in _weights]
     results_file = 'loss_weight_combinations-B{bob}E{eve}-T{0}.dat'.format(test_snr, **train_snr)
     with open(results_file, 'w') as outf:
@@ -210,6 +214,6 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
     return history, model
 
 if __name__ == "__main__":
-    train_snr = {'bob': 2., 'eve': 2.}
-    history, model = main(k=5, train_snr=train_snr, test_snr=7)
+    train_snr = {'bob': 2., 'eve': -5}
+    history, model = main(n=512, k=5, train_snr=train_snr, test_snr=0)
     plt.show()

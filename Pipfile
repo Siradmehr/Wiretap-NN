@@ -1,0 +1,12 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+map-classifier = {path = "/home/karl/ext_repos/map-classifier-python"}
+
+[dev-packages]
+
+[requires]
+python_version = "3.7"

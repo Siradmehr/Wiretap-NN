@@ -1,0 +1,24 @@
+{
+    "_meta": {
+        "hash": {
+            "sha256": "2619193a4403e583fa2ac4a90029823394d29ffa162ab9991ee84eec0ddbc2fa"
+        },
+        "pipfile-spec": 6,
+        "requires": {
+            "python_version": "3.7"
+        },
+        "sources": [
+            {
+                "name": "pypi",
+                "url": "https://pypi.org/simple",
+                "verify_ssl": true
+            }
+        ]
+    },
+    "default": {
+        "map-classifier": {
+            "path": "/home/karl/ext_repos/map-classifier-python"
+        }
+    },
+    "develop": {}
+}

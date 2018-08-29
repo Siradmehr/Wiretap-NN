@@ -14,6 +14,7 @@ def _create_grid(limits_bob, limits_eve):
     return grid
 
 def run_grid_simulation(n, snr_grid):
+    alg = "map"
     results = {}
     for snr_bob, snr_eve in snr_grid:
         print("Running: {}\t{}".format(snr_bob, snr_eve))
@@ -21,7 +22,7 @@ def run_grid_simulation(n, snr_grid):
             ber, leak, k = (-1, -1, 0)
         else:
             ber, leak, k = polar_wiretap_comparison.main(
-                n, snr_bob=snr_bob, snr_eve=snr_eve, test_snr=snr_bob)
+                n, snr_bob=snr_bob, snr_eve=snr_eve, test_snr=snr_bob, alg=alg)
         results[(snr_bob, snr_eve)] = [ber, leak, k]
     return results
 
