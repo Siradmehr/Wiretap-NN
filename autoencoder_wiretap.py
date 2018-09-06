@@ -1,3 +1,5 @@
+import os.path
+
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import multivariate_normal
@@ -6,7 +8,7 @@ from keras import models
 from keras import layers
 from keras import backend as K
 
-from digcommpy import messages
+from digcommpy import messages, metrics
 
 class AlwaysOnGaussianNoise(layers.GaussianNoise):
     def call(self, inputs, training=None):
@@ -58,7 +60,7 @@ def tensor_entropy_gauss_mix_upper(mu, sig, batch_size, dim):
     #log_inner = K.log(inner_sums)
     dim = np.shape(sig)[0]
     #_factor = 1./(np.sqrt((2*np.pi)**dim*np.linalg.det(sig)))
-    _factor_log = -(dim/2)*(2*np.pi*sig[0, 0])
+    _factor_log = -(dim/2)*np.log(2*np.pi*sig[0, 0])
     norm_exp = tensor_norm_pdf_exponent(x, mu, sig)
     norm_exp = K.reshape(norm_exp, (batch_size, batch_size, -1))
     #log_inner = np.log(weight*_factor) + K.logsumexp(norm_exp, axis=1, keepdims=True)
@@ -174,18 +176,19 @@ def single_main(n, k, snr_bob, snr_eve, test_snr, loss_weights=[.5, .5]):
 
 def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
     info_book = messages.generate_data(k, binary=True)
-    test_set = messages.generate_data(k, number=10000, binary=True)
+    test_set = messages.generate_data(k, number=30000, binary=True)
     #target_eve = .5*np.ones(np.shape(info_book))
     target_eve = np.zeros((len(info_book), n))
     #target_eve = np.zeros((n,))
     #loss_weights = [[0., 1.], [.1, .9], [.2, .8], [.3, .7], [.4, .6], [.5, .5],
     #                [.6, .4], [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
     #_weights = np.linspace(0.13, .14, 5)  # 5000 epochs
-    _weights = np.linspace(0.1, .9, 10)
+    _weights = np.linspace(0.1, .5, 10)
     loss_weights = [[1.-k, k] for k in _weights]
-    results_file = 'loss_weight_combinations-B{bob}E{eve}-T{0}.dat'.format(test_snr, **train_snr)
+    results_file = 'lwc-B{bob}E{eve}-T{0}-n{1}-k{2}.dat'.format(test_snr, n, k, **train_snr)
+    results_file = os.path.join("data", results_file)
     with open(results_file, 'w') as outf:
-        outf.write("wB\twE\tBER\tLeak\tLoss\n")
+        outf.write("wB\twE\tBER\tBLER\tLeak\tLoss\n")
     for combination in loss_weights:
         print("Loss weight combination: {}".format(combination))
         model = create_model(n, k, symmetrical=False, loss_weights=combination,
@@ -201,19 +204,22 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
         model.layers[idx_noise_layer].stddev = np.sqrt(test_noise)
         pred = model.predict(test_set)[0]
         pred_bit = np.round(pred)
-        ber = hamming_loss(np.ravel(test_set), np.ravel(pred_bit))
+        #ber = hamming_loss(np.ravel(test_set), np.ravel(pred_bit))
+        ber = metrics.ber(test_set, pred_bit)
+        bler = metrics.bler(test_set, pred_bit)
         leak = history.history['codewords_loss'][-1]
         total_loss = history.history['loss'][-1]
         print("BER:\t{}".format(ber))
+        print("BLER:\t{}".format(bler))
         print("Leak:\t{}".format(leak*k))
         print("Loss:\t{}\n".format(total_loss))
         with open(results_file, 'a') as outf:
-            outf.write("{}\t{}\t{}\t{}\t{}\n".format(
-                *combination, ber, leak, total_loss))
+            outf.write("{}\t{}\t{}\t{}\t{}\t{}\n".format(
+                *combination, ber, bler, leak, total_loss))
     plot_history(history)
     return history, model
 
 if __name__ == "__main__":
     train_snr = {'bob': 2., 'eve': -5}
-    history, model = main(n=512, k=5, train_snr=train_snr, test_snr=0)
+    history, model = main(n=128, k=5, train_snr=train_snr, test_snr=0.)
     plt.show()

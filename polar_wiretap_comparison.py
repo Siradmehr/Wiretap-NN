@@ -13,7 +13,7 @@ def leakage(code_book_mod, snr_db):
     entr_noise = .5*dim*np.log(2*np.pi*np.e*noise_power)
     return (entr_gauss_mix - entr_noise)/np.log(2)
 
-def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='map'):
+def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
     channel = "BAWGN"
     encoder = encoders.PolarWiretapEncoder(n, channel, channel,
                                            snr_bob, snr_eve)
