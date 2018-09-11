@@ -16,6 +16,13 @@ class AlwaysOnGaussianNoise(layers.GaussianNoise):
                                         mean=0.,
                                         stddev=self.stddev)
 
+class AlwaysOnBinaryNoise(layers.Layer):
+    def __init__(self, **kwargs):
+        super(AlwaysOnBinaryNoise, self).__init__(**kwargs)
+
+    def call(self, inputs, training=None):
+        return K.round(K.random_uniform(shape=K.shape(inputs)))
+
 def _hard_sigmoid(x):
     #x = (5.*x)-2
     x = (2.5*x)-(2.5*.3)
@@ -89,7 +96,7 @@ def tensor_norm_pdf(x, mu, sigma):
 
 def create_model(code_length:int =16, info_length: int =4, activation='relu',
                  symmetrical=True, loss_weights=[.5, .5],
-                 train_snr={'bob': 0., 'eve': -5.}):
+                 train_snr={'bob': 0., 'eve': -5.}, random_length=3):
     rate = info_length/code_length
     #nodes_enc = [2*code_length, (info_length+code_length)//2, code_length]
     #nodes_enc = [2*code_length, code_length]
@@ -110,7 +117,10 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     if symmetrical:
         nodes_dec = reversed(nodes_enc)
     main_input = layers.Input(shape=(info_length,))
-    layer_list_enc = [main_input]
+    random_input = layers.Input(shape=(random_length,), name='random_input')
+    random_bits = AlwaysOnBinaryNoise(input_shape=(random_length,))(random_input)
+    input_layer = layers.concatenate([main_input, random_bits])
+    layer_list_enc = [input_layer]
     for idx, _nodes in enumerate(nodes_enc):
         _new_layer = layers.Dense(_nodes, activation=activation)(layer_list_enc[idx])
         layer_list_enc.append(_new_layer)
@@ -129,7 +139,7 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     #    mutual_info_eve, arguments={'noise_pow': train_noise['eve']},
     #    output_shape=(1,), name='output_eve')(noise_layer_eve)
     
-    model = models.Model(inputs=[main_input],
+    model = models.Model(inputs=[main_input, random_input],
                          outputs=[output_layer_bob, layer_list_enc[-1]])
     model.compile('adam', loss_weights=loss_weights,#loss_weights=[.8, .2],
                   #loss=['binary_crossentropy', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, code_length, noise_pow=train_noise['eve'], k=info_length)])
@@ -174,16 +184,27 @@ def single_main(n, k, snr_bob, snr_eve, test_snr, loss_weights=[.5, .5]):
     print("Loss:\t{}\n".format(total_loss))
     return ber, leak*k
 
-def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
+def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.,
+         random_length=3):
     info_book = messages.generate_data(k, binary=True)
-    test_set = messages.generate_data(k, number=30000, binary=True)
+    info_train = messages.generate_data(k, number=2**(k+random_length),
+                                        binary=True)
+    info_train = info_book
+    #rnd_train = messages.generate_data(random_length, binary=True,
+    #                                   number=2**(k+random_length))
+    rnd_train = np.zeros((2**k, random_length))
+    test_info = messages.generate_data(k, number=30000, binary=True)
+    #test_rnd = messages.generate_data(random_length, number=30000, binary=True)
+    test_rnd = np.zeros((30000, random_length))
+    test_set = [test_info, test_rnd]
     #target_eve = .5*np.ones(np.shape(info_book))
-    target_eve = np.zeros((len(info_book), n))
+    target_eve = np.zeros((len(info_train), n))
     #target_eve = np.zeros((n,))
     #loss_weights = [[0., 1.], [.1, .9], [.2, .8], [.3, .7], [.4, .6], [.5, .5],
     #                [.6, .4], [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
     #_weights = np.linspace(0.13, .14, 5)  # 5000 epochs
-    _weights = np.linspace(0.1, .5, 10)
+    #_weights = np.linspace(0.1, .5, 10)
+    _weights = np.linspace(0.1, .6, 10)
     loss_weights = [[1.-k, k] for k in _weights]
     results_file = 'lwc-B{bob}E{eve}-T{0}-n{1}-k{2}.dat'.format(test_snr, n, k, **train_snr)
     results_file = os.path.join("data", results_file)
@@ -192,10 +213,11 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
     for combination in loss_weights:
         print("Loss weight combination: {}".format(combination))
         model = create_model(n, k, symmetrical=False, loss_weights=combination,
-                             train_snr=train_snr, activation='sigmoid')
+                             train_snr=train_snr, activation='sigmoid',
+                             random_length=random_length)
         #print("Start training...")
-        history = model.fit([info_book], [info_book, target_eve], epochs=5000,
-                            verbose=0, batch_size=2**k)
+        history = model.fit([info_train, rnd_train], [info_train, target_eve],
+                            epochs=5000, verbose=0)#, batch_size=2**k)
         #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
         #return history, model
         #print("Start testing...")
@@ -205,8 +227,8 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
         pred = model.predict(test_set)[0]
         pred_bit = np.round(pred)
         #ber = hamming_loss(np.ravel(test_set), np.ravel(pred_bit))
-        ber = metrics.ber(test_set, pred_bit)
-        bler = metrics.bler(test_set, pred_bit)
+        ber = metrics.ber(test_info, pred_bit)
+        bler = metrics.bler(test_info, pred_bit)
         leak = history.history['codewords_loss'][-1]
         total_loss = history.history['loss'][-1]
         print("BER:\t{}".format(ber))
@@ -221,5 +243,6 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.):
 
 if __name__ == "__main__":
     train_snr = {'bob': 2., 'eve': -5}
-    history, model = main(n=128, k=5, train_snr=train_snr, test_snr=0.)
+    history, model = main(n=16, k=4, train_snr=train_snr, test_snr=0.,
+                          random_length=10)
     plt.show()
