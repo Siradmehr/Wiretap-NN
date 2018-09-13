@@ -16,12 +16,13 @@ class AlwaysOnGaussianNoise(layers.GaussianNoise):
                                         mean=0.,
                                         stddev=self.stddev)
 
-class AlwaysOnBinaryNoise(layers.Layer):
+class BinaryNoise(layers.Layer):
     def __init__(self, **kwargs):
-        super(AlwaysOnBinaryNoise, self).__init__(**kwargs)
+        super(BinaryNoise, self).__init__(**kwargs)
 
     def call(self, inputs, training=None):
-        return K.round(K.random_uniform(shape=K.shape(inputs)))
+        return K.in_train_phase(K.round(K.random_uniform(shape=K.shape(inputs))),
+                                inputs, training=training)
 
 def _hard_sigmoid(x):
     #x = (5.*x)-2
@@ -118,7 +119,7 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
         nodes_dec = reversed(nodes_enc)
     main_input = layers.Input(shape=(info_length,))
     random_input = layers.Input(shape=(random_length,), name='random_input')
-    random_bits = AlwaysOnBinaryNoise(input_shape=(random_length,))(random_input)
+    random_bits = BinaryNoise(input_shape=(random_length,))(random_input)
     input_layer = layers.concatenate([main_input, random_bits])
     layer_list_enc = [input_layer]
     for idx, _nodes in enumerate(nodes_enc):
@@ -194,8 +195,8 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.,
     #                                   number=2**(k+random_length))
     rnd_train = np.zeros((2**k, random_length))
     test_info = messages.generate_data(k, number=30000, binary=True)
-    #test_rnd = messages.generate_data(random_length, number=30000, binary=True)
-    test_rnd = np.zeros((30000, random_length))
+    test_rnd = messages.generate_data(random_length, number=30000, binary=True)
+    #test_rnd = np.zeros((30000, random_length))
     test_set = [test_info, test_rnd]
     #target_eve = .5*np.ones(np.shape(info_book))
     target_eve = np.zeros((len(info_train), n))
@@ -238,11 +239,26 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.,
         with open(results_file, 'a') as outf:
             outf.write("{}\t{}\t{}\t{}\t{}\t{}\n".format(
                 *combination, ber, bler, leak, total_loss))
-    plot_history(history)
+        _save_codebook(model, k, random_length, combination)
+    #plot_history(history)
     return history, model
+
+def _save_codebook(model, info_length, random_length, combination):
+    _all_cw = messages.generate_data(info_length+random_length, binary=True)
+    _all_cw = np.array(_all_cw)
+    info, rand = _all_cw[:, :info_length], _all_cw[:, info_length:]
+    encoder_out_layer = model.get_layer("codewords")
+    layer_output_func = K.function([*model.inputs, K.learning_phase()],
+                                   [encoder_out_layer.output])
+    codewords = layer_output_func([info, rand, 0])[0]
+    results_file = "codewords-{}.dat".format(combination)
+    with open(results_file, 'w') as outf:
+        outf.write("mess\trand\tcodeword\n")
+        for _info, _rand, _cw in zip(info, rand, codewords):
+            outf.write("{}\t{}\t{}\n".format(list(_info), list(_rand), list(_cw)))
 
 if __name__ == "__main__":
     train_snr = {'bob': 2., 'eve': -5}
     history, model = main(n=16, k=4, train_snr=train_snr, test_snr=0.,
-                          random_length=10)
+                          random_length=3)
     plt.show()
