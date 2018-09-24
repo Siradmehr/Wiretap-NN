@@ -9,6 +9,7 @@ from keras import layers
 from keras import backend as K
 
 from digcommpy import messages, metrics
+from digcommpy import information_theory as it
 
 class AlwaysOnGaussianNoise(layers.GaussianNoise):
     def call(self, inputs, training=None):
@@ -102,7 +103,9 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     #nodes_enc = [2*code_length, (info_length+code_length)//2, code_length]
     #nodes_enc = [2*code_length, code_length]
     #nodes_enc = [2**info_length, 4*code_length, code_length]
-    nodes_enc = [8*code_length, code_length]
+    #nodes_enc = [8*code_length, code_length]
+    #nodes_dec = [8*code_length]
+    nodes_enc = [8*code_length, 4*code_length, code_length]
     nodes_dec = [8*code_length]
     #nodes_dec = [4*code_length, 2**info_length]
     #train_snr = {'bob': 0., 'eve': -5.}
@@ -186,7 +189,7 @@ def single_main(n, k, snr_bob, snr_eve, test_snr, loss_weights=[.5, .5]):
     return ber, leak*k
 
 def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.,
-         random_length=3):
+         random_length=3, test_size=30000):
     info_book = messages.generate_data(k, binary=True)
     info_train = messages.generate_data(k, number=2**(k+random_length),
                                         binary=True)
@@ -194,8 +197,8 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.,
     #rnd_train = messages.generate_data(random_length, binary=True,
     #                                   number=2**(k+random_length))
     rnd_train = np.zeros((2**k, random_length))
-    test_info = messages.generate_data(k, number=30000, binary=True)
-    test_rnd = messages.generate_data(random_length, number=30000, binary=True)
+    test_info = messages.generate_data(k, number=test_size, binary=True)
+    test_rnd = messages.generate_data(random_length, number=test_size, binary=True)
     #test_rnd = np.zeros((30000, random_length))
     test_set = [test_info, test_rnd]
     #target_eve = .5*np.ones(np.shape(info_book))
@@ -204,10 +207,10 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.,
     #loss_weights = [[0., 1.], [.1, .9], [.2, .8], [.3, .7], [.4, .6], [.5, .5],
     #                [.6, .4], [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
     #_weights = np.linspace(0.13, .14, 5)  # 5000 epochs
-    #_weights = np.linspace(0.1, .5, 10)
-    _weights = np.linspace(0.1, .6, 10)
+    #_weights = np.linspace(0.1, .6, 10)
+    _weights = np.linspace(0.01, .1, 25)
     loss_weights = [[1.-k, k] for k in _weights]
-    results_file = 'lwc-B{bob}E{eve}-T{0}-n{1}-k{2}.dat'.format(test_snr, n, k, **train_snr)
+    results_file = 'lwc-B{bob}E{eve}-T{0}-n{1}-k{2}-r{3}.dat'.format(test_snr, n, k, random_length, **train_snr)
     results_file = os.path.join("data", results_file)
     with open(results_file, 'w') as outf:
         outf.write("wB\twE\tBER\tBLER\tLeak\tLoss\n")
@@ -218,7 +221,7 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.,
                              random_length=random_length)
         #print("Start training...")
         history = model.fit([info_train, rnd_train], [info_train, target_eve],
-                            epochs=5000, verbose=0)#, batch_size=2**k)
+                            epochs=7000, verbose=0)#, batch_size=2**k)
         #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
         #return history, model
         #print("Start testing...")
@@ -235,11 +238,13 @@ def main(n=16, k=4, train_snr={'bob': 2., 'eve': 0.}, test_snr=5.,
         print("BER:\t{}".format(ber))
         print("BLER:\t{}".format(bler))
         print("Leak:\t{}".format(leak*k))
-        print("Loss:\t{}\n".format(total_loss))
+        print("Loss:\t{}".format(total_loss))
+        codebook = _save_codebook(model, k, random_length, combination)
+        leak = calc_wiretap_leakage(*codebook, train_snr['eve'])
+        print("Real leak:\t{}\n".format(leak))
         with open(results_file, 'a') as outf:
             outf.write("{}\t{}\t{}\t{}\t{}\t{}\n".format(
                 *combination, ber, bler, leak, total_loss))
-        _save_codebook(model, k, random_length, combination)
     #plot_history(history)
     return history, model
 
@@ -252,13 +257,30 @@ def _save_codebook(model, info_length, random_length, combination):
                                    [encoder_out_layer.output])
     codewords = layer_output_func([info, rand, 0])[0]
     results_file = "codewords-{}.dat".format(combination)
+    results_file = os.path.join('codewords', results_file)
     with open(results_file, 'w') as outf:
         outf.write("mess\trand\tcodeword\n")
         for _info, _rand, _cw in zip(info, rand, codewords):
             outf.write("{}\t{}\t{}\n".format(list(_info), list(_rand), list(_cw)))
+    return info, rand, codewords
+
+def calc_wiretap_leakage(info, rand, codewords, snr_eve):
+    snr_eve_lin = 10.**(snr_eve/10.)
+    input_power = 1.
+    noise_var = input_power/snr_eve_lin
+    entr_z = it.entropy_gauss_mix_upper(codewords, noise_var)
+    messages, idx_rev = np.unique(info, axis=0, return_inverse=True)
+    entr_zm = []
+    for _mess_idx in np.unique(idx_rev):
+        _idx = np.where(idx_rev == _mess_idx)[0]
+        _relevant_codewords = codewords[_idx]
+        entr_zm.append(it.entropy_gauss_mix_lower(_relevant_codewords, noise_var))
+    entr_zm = np.mean(entr_zm)
+    leak = entr_z - entr_zm
+    return leak
 
 if __name__ == "__main__":
     train_snr = {'bob': 2., 'eve': -5}
     history, model = main(n=16, k=4, train_snr=train_snr, test_snr=0.,
-                          random_length=3)
+                          random_length=3, test_size=100000)
     plt.show()

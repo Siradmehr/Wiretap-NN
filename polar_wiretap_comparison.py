@@ -1,17 +1,35 @@
 import numpy as np
 from digcommpy import messages, decoders, encoders, channels, modulators, metrics
-from gauss_mix import entropy_gauss_mix_upper, entropy_gauss_mix_lower
+from digcommpy import information_theory as it
+#from gauss_mix import entropy_gauss_mix_upper, entropy_gauss_mix_lower
 from map_decoder import MapDecoder
 
-def leakage(code_book_mod, snr_db):
-    dim = np.shape(code_book_mod)[1]
-    noise_power = 1./(10.**(snr_db/10.))
-    sig = noise_power * np.eye(dim)
-    entr_gauss_mix = entropy_gauss_mix_upper(code_book_mod, sig)
-    #entr_gauss_mix = entropy_gauss_mix_lower(code_book_mod, sig)
-    #entr_noise = .5*np.log((2*np.pi*np.e)**dim*np.linalg.det(sig))
-    entr_noise = .5*dim*np.log(2*np.pi*np.e*noise_power)
-    return (entr_gauss_mix - entr_noise)/np.log(2)
+
+def leakage(info, codewords, snr_eve):
+    snr_eve_lin = 10.**(snr_eve/10.)
+    input_power = 1.
+    noise_var = input_power/snr_eve_lin
+    entr_z = it.entropy_gauss_mix_upper(codewords, noise_var)
+    messages, idx_rev = np.unique(info, axis=0, return_inverse=True)
+    entr_zm = []
+    for _mess_idx in np.unique(idx_rev):
+        _idx = np.where(idx_rev == _mess_idx)[0]
+        _relevant_codewords = codewords[_idx]
+        entr_zm.append(it.entropy_gauss_mix_lower(_relevant_codewords, noise_var))
+    entr_zm = np.mean(entr_zm)
+    leak = entr_z - entr_zm
+    return leak
+
+#def leakage(code_book_mod, snr_db):
+#    raise NotImplementedError("Calculate leakage including random bits")
+#    dim = np.shape(code_book_mod)[1]
+#    noise_power = 1./(10.**(snr_db/10.))
+#    sig = noise_power * np.eye(dim)
+#    entr_gauss_mix = it.entropy_gauss_mix_upper(code_book_mod, sig)
+#    #entr_gauss_mix = it.entropy_gauss_mix_lower(code_book_mod, sig)
+#    #entr_noise = .5*np.log((2*np.pi*np.e)**dim*np.linalg.det(sig))
+#    entr_noise = .5*dim*np.log(2*np.pi*np.e*noise_power)
+#    return (entr_gauss_mix - entr_noise)/np.log(2)
 
 def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
     channel = "BAWGN"
@@ -40,22 +58,24 @@ def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
         decoder.train_system((train_code, train_info))
         print(decoder.decoder.p_j_Ci_x_dict)
 
-    info_book = messages.generate_data(k, binary=True)
-    code_book = encoder.encode_messages(info_book)
+    #info_book = messages.generate_data(k, binary=True)
+    #code_book = encoder.encode_messages(info_book)
+    info_book, code_book = encoder.generate_codebook()
     code_book_mod = modulator.modulate_symbols(code_book)
-    leak = leakage(code_book_mod, snr_eve)
+    leak = leakage(info_book, code_book_mod, snr_eve)
 
-    test_set = messages.generate_data(k, number=10000, binary=True)
+    test_set = messages.generate_data(k, number=100000, binary=True)
     test_code = encoder.encode_messages(test_set)
     test_mod = modulator.modulate_symbols(test_code)
     rec_mod = channel.transmit_data(test_mod)
     pred_info = decoder.decode_messages(rec_mod, channel)
     ber = metrics.ber(test_set, pred_info)
-    print("BER:\t{}\nLeak:\t{}".format(ber, leak))
+    bler = metrics.bler(test_set, pred_info)
+    print("BER:\t{}\nBLER:\t{}\nLeak:\t{}".format(ber, bler, leak))
     return ber, leak, k
 
 
 if __name__ == "__main__":
-    snr_bob = -20.
-    snr_eve = -50.
-    results = main(n=512, snr_bob=snr_bob, snr_eve=snr_eve, test_snr=snr_bob, alg='ref')
+    snr_bob = 0.
+    snr_eve = -5.
+    results = main(n=16, snr_bob=snr_bob, snr_eve=snr_eve, test_snr=snr_bob, alg='ref')
