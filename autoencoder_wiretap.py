@@ -1,6 +1,6 @@
 import os.path
 
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import multivariate_normal
 from sklearn.metrics import hamming_loss
@@ -58,6 +58,20 @@ def loss_ber(y_true, y_pred):
     return K.mean(_fake_not_equal(y_true, _hard_sigmoid(y_pred)))*2.  # to normalize
     #return K.mean(K.not_equal(K.round(y_pred), y_true))*2.  # to normalize
 
+def loss_leakage_gauss_mix(y_true, y_pred, k, r, dim, noise_pow=.5):
+    split_len = int(2**r)
+    batch_size = int(2**(r+k))
+    sigma = noise_pow * np.eye(dim)
+    entr_z = tensor_entropy_gauss_mix_upper(y_pred, sigma, batch_size, dim)
+    entr_z = K.repeat_elements(entr_z, batch_size, 0)
+    entr_zm = []
+    for i in range(2**k):
+        _y_pred_message = y_pred[i*split_len:(i+1)*split_len, :]
+        _entr_zm = tensor_entropy_gauss_mix_upper(_y_pred_message, sigma, split_len, dim)
+        _entr_zm = K.repeat_elements(_entr_zm, split_len, 0)
+        entr_zm.append(_entr_zm)
+    entr_zm = K.concatenate(entr_zm, axis=0)
+    return K.mean(entr_z - entr_zm, axis=-1)/(np.log(2)*k)
 
 def loss_gauss_mix_entropy(y_true, y_pred, batch_size, dim, noise_pow=.5, k=1):
     #return K.variable(np.array([[1]]))
@@ -156,8 +170,8 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     model = models.Model(inputs=[main_input, random_input],
                          outputs=[output_layer_bob, layer_list_enc[-1]])
     model.compile('adam', loss_weights=loss_weights,#loss_weights=[.8, .2],
-                  #loss=['binary_crossentropy', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, code_length, noise_pow=train_noise['eve'], k=info_length)])
-                  loss=['mse', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, code_length, noise_pow=train_noise['eve'], k=info_length)])
+                  #loss=['mse', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, code_length, noise_pow=train_noise['eve'], k=info_length)])
+                  loss=['mse', lambda x, y: loss_leakage_gauss_mix(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'])])
     #model = models.Model(inputs=[main_input], outputs=[output_layer_bob])
     #model.compile('adam', 'binary_crossentropy')
     return model
@@ -205,15 +219,17 @@ def _single_simulation(n, k, random_length, loss_weights, train_snr, train_set,
     return ber, leak*k
 
 def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
-                      random_length=3, loss_weights=[.5, .5], test_size=30000):
+                      random_length=3, loss_weights=[.5, .5], test_size=30000,
+                      nodes_enc=None, nodes_dec=None):
     dirname = DIRNAME.format(n=n, k=k, r=random_length, bob=test_snr,
                              eve=train_snr['eve'], train=train_snr['bob'])
-    os.makedirs(dirname, exist_ok=True)
+    os.makedirs(os.path.join("results", dirname), exist_ok=True)
+    with open(os.path.join("results", dirname, "config"), 'w') as infile:
+        infile.write("Encoder: {}\nDecoder: {}\n".format(nodes_enc, nodes_dec))
     info_book = messages.generate_data(k, binary=True)
-    info_train = messages.generate_data(k, number=2**(k+random_length),
-                                        binary=True)
-    info_train = info_book
-    rnd_train = np.zeros((2**k, random_length))
+    info_train = messages.generate_data(k+r, number=None, binary=True)
+    info_train = info_train[:, :k]
+    rnd_train = np.zeros((2**(r+k), random_length))
     test_info = messages.generate_data(k, number=test_size, binary=True)
     test_rnd = messages.generate_data(random_length, number=test_size,
                                       binary=True)
@@ -227,17 +243,19 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
     _weights = np.linspace(0.01, .1, 25)
     loss_weights = [[1.-k, k] for k in _weights]
     results_file = 'lwc-B{bob}E{eve}-T{0}-n{1}-k{2}-r{3}.dat'.format(test_snr, n, k, random_length, **train_snr)
-    results_file = os.path.join("data", results_file)
+    results_file = os.path.join("results", dirname, results_file)
     with open(results_file, 'w') as outf:
         outf.write("wB\twE\tBER\tBLER\tLeak\tLoss\n")
     for combination in loss_weights:
         print("Loss weight combination: {}".format(combination))
         model = create_model(n, k, symmetrical=False, loss_weights=combination,
                              train_snr=train_snr, activation='sigmoid',
-                             random_length=random_length)
+                             random_length=random_length, nodes_enc=nodes_enc,
+                             nodes_dec=nodes_dec)
         #print("Start training...")
         history = model.fit([info_train, rnd_train], [info_train, target_eve],
-                            epochs=7000, verbose=0)#, batch_size=2**k)
+                            epochs=7000, verbose=0, shuffle=False, 
+                            batch_size=len(info_train))
         #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
         #return history, model
         #print("Start testing...")
@@ -273,7 +291,8 @@ def _save_codebook(model, info_length, random_length, combination, dirname='.'):
                                    [encoder_out_layer.output])
     codewords = layer_output_func([info, rand, 0])[0]
     results_file = "codewords-{}.dat".format(combination)
-    results_file = os.path.join('codewords', dirname, results_file)
+    dirname = os.path.join('results', dirname)#, results_file)
+    results_file = os.path.join(dirname, results_file)
     #results_file = os.path.join('codewords', results_file)
     with open(results_file, 'w') as outf:
         outf.write("mess\trand\tcodeword\n")
@@ -298,6 +317,10 @@ def calc_wiretap_leakage(info, rand, codewords, snr_eve):
 
 if __name__ == "__main__":
     train_snr = {'bob': 2., 'eve': -5}
-    history, model = main(n=16, k=4, train_snr=train_snr, test_snr=0.,
-                          random_length=3, test_size=100000)
+    code_length = 16
+    nodes_enc = [8*code_length, code_length]
+    nodes_dec = [8*code_length]
+    history, model = loss_weight_sweep(n=code_length, k=4, train_snr=train_snr,
+        test_snr=0., random_length=3, test_size=100000, nodes_enc=nodes_enc,
+        nodes_dec=nodes_dec)
     plt.show()
