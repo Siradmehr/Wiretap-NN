@@ -27,6 +27,35 @@ class BinaryNoise(layers.Layer):
         return K.in_train_phase(K.round(K.random_uniform(shape=K.shape(inputs))),
                                 inputs, training=training)
 
+class SimpleNormalization(layers.Layer):
+    def __init__(self, **kwargs):
+        super(SimpleNormalization, self).__init__(**kwargs)
+        self.mean = None
+        self.std = None
+
+    def call(self, inputs, training=None):
+        def _transform(m=None, s=None):
+            if m is None:
+                m = K.mean(inputs, axis=-1, keepdims=True)
+            _shape = K.int_shape(inputs)
+            #tm = inputs -  K.reshape(K.repeat_elements(m, _shape[1], 0), _shape)
+            tm = inputs -  K.repeat_elements(m, _shape[1], -1)
+            if s is None:
+                s = K.var(tm, axis=-1, keepdims=True)
+            #tmv = tm/K.reshape(K.repeat_elements(s, _shape[1], 0), _shape)
+            tmv = tm/(K.sqrt(K.repeat_elements(s, _shape[1], -1)+0.001))
+            #tmv = tm
+            return tmv, m, s
+        def training_transform():
+            out, m, s = _transform()
+            self.mean = m
+            self.std = s
+            return out
+        def test_transform():
+            out, m, s = _transform(self.mean, self.std)
+            return out
+        return K.in_train_phase(training_transform(), test_transform(), training=training)
+
 def _hard_sigmoid(x):
     #x = (5.*x)-2
     x = (2.5*x)-(2.5*.3)
@@ -52,12 +81,10 @@ def loss_leakage_gauss_mix(y_true, y_pred, k, r, dim, noise_pow=.5):
     for i in range(2**k):
         _y_pred_message = y_pred[i*split_len:(i+1)*split_len, :]
         _entr_zm = tensor_entropy_gauss_mix_upper(_y_pred_message, sigma, split_len, dim)
-        #_entr_zm = K.repeat_elements(_entr_zm, split_len, 0)
         entr_zm.append(_entr_zm)
     entr_zm = K.concatenate(entr_zm, axis=0)
-    return entr_zm
     entr_zm = K.mean(entr_zm, axis=0)
-    entr_zm = K.repeat_elements(entr_zm, batch_size, 0)
+    #entr_zm = K.repeat_elements(entr_zm, batch_size, 0)
     return K.mean(entr_z - entr_zm, axis=-1)/(np.log(2)*k)
 
 def loss_gauss_mix_entropy(y_true, y_pred, batch_size, dim, noise_pow=.5, k=1):
@@ -140,7 +167,8 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     for idx, _nodes in enumerate(nodes_enc):
         _new_layer = layers.Dense(_nodes, activation=activation)(layer_list_enc[idx])
         layer_list_enc.append(_new_layer)
-    layer_list_enc.append(layers.BatchNormalization(axis=1, name='codewords')(layer_list_enc[-1]))
+    #layer_list_enc.append(layers.BatchNormalization(axis=-1, name='codewords')(layer_list_enc[-1]))
+    layer_list_enc.append(SimpleNormalization(name='codewords')(layer_list_enc[-1]))
     noise_layer_bob = noise_layers['bob'](layer_list_enc[-1])
     #noise_layer_eve = noise_layers['eve'](layer_list_enc[-1])
     layer_list_decoder = [noise_layer_bob]
@@ -252,7 +280,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         noise_var_eve = input_power/(2*np.log2(m_ask_codewords)*k/n*10.**(train_snr['eve']/10.))
         idx_noise_layer = [type(t) == AlwaysOnGaussianNoise for t in model.layers].index(True)
         test_noise = input_power/(2*np.log2(m_ask_codewords)*k/n*10**(test_snr/10.))
-        print(m_ask_codewords, np.var(codebook[2], axis=1), noise_var_eve)
+        print(m_ask_codewords, np.std(codebook[2], axis=1), noise_var_eve)
         model.layers[idx_noise_layer].stddev = np.sqrt(test_noise)
         pred = model.predict(test_set)[0]
         pred_bit = np.round(pred)
