@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-map-classifier = {path = "/home/karl/ext_repos/map-classifier-python"}
+digcommpy = "*"
 
 [dev-packages]
 

@@ -1,6 +1,5 @@
 import os.path
 
-import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import multivariate_normal
 from sklearn.metrics import hamming_loss
@@ -38,13 +37,10 @@ class SimpleNormalization(layers.Layer):
             if m is None:
                 m = K.mean(inputs, axis=-1, keepdims=True)
             _shape = K.int_shape(inputs)
-            #tm = inputs -  K.reshape(K.repeat_elements(m, _shape[1], 0), _shape)
             tm = inputs -  K.repeat_elements(m, _shape[1], -1)
             if s is None:
                 s = K.var(tm, axis=-1, keepdims=True)
-            #tmv = tm/K.reshape(K.repeat_elements(s, _shape[1], 0), _shape)
             tmv = tm/(K.sqrt(K.repeat_elements(s, _shape[1], -1)+0.001))
-            #tmv = tm
             return tmv, m, s
         def training_transform():
             out, m, s = _transform()
@@ -55,21 +51,6 @@ class SimpleNormalization(layers.Layer):
             out, m, s = _transform(self.mean, self.std)
             return out
         return K.in_train_phase(training_transform(), test_transform(), training=training)
-
-def _hard_sigmoid(x):
-    #x = (5.*x)-2
-    x = (2.5*x)-(2.5*.3)
-    #zero = _to_tensor(0., x.dtype.base_dtype)
-    #one = _to_tensor(1., x.dtype.base_dtype)
-    x = K.clip(x, 0, 1)
-    return x
-
-def _fake_not_equal(y_true, y_pred):
-    return 1.-K.exp(-20*K.abs(y_true-y_pred))
-
-def loss_ber(y_true, y_pred):
-    return K.mean(_fake_not_equal(y_true, _hard_sigmoid(y_pred)))*2.  # to normalize
-    #return K.mean(K.not_equal(K.round(y_pred), y_true))*2.  # to normalize
 
 def loss_leakage_gauss_mix(y_true, y_pred, k, r, dim, noise_pow=.5):
     split_len = int(2**r)
@@ -191,18 +172,6 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     #model.compile('adam', 'binary_crossentropy')
     return model
 
-def plot_history(history):
-    epochs = history.epoch
-    hist_loss = history.history
-    fig = plt.figure()
-    axs = fig.add_subplot(111)
-    for loss_name, loss_val in hist_loss.items():
-        axs.plot(epochs, loss_val, label=loss_name)
-    axs.legend()
-    axs.set_xlabel("Training Epoch")
-    axs.set_ylabel("Loss Value")
-    axs.set_title("N=16, k=4, SNR_Bob=10dB, SNR_Eve=5dB\nweight_Bob=0.5, weight_Eve=0.5")
-
 def _single_simulation(n, k, random_length, loss_weights, train_snr, train_set,
                        target_eve, test_snr, test_set):
     info_train, rnd_train = train_set
@@ -255,7 +224,8 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
     #                [.6, .4], [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
     #_weights = np.linspace(0.13, .14, 5)  # 5000 epochs
     #_weights = np.linspace(0.1, .6, 10)
-    _weights = np.linspace(0.01, .3, 15)
+    #_weights = np.linspace(0.01, .3, 15)
+    _weights = np.linspace(0.01, .3, 3)
     loss_weights = [[1.-k, k] for k in _weights]
     results_file = 'lwc-B{bob}E{eve}-T{0}-n{1}-k{2}-r{3}.dat'.format(test_snr, n, k, random_length, **train_snr)
     results_file = os.path.join("results", dirname, results_file)
@@ -269,18 +239,21 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
                              nodes_dec=nodes_dec)
         #print("Start training...")
         history = model.fit([info_train, rnd_train], [info_train, target_eve],
-                            epochs=1000, verbose=0, shuffle=False, 
+                            epochs=2000, verbose=0, shuffle=False, 
                             batch_size=len(info_train))
         #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
         #return history, model
         #print("Start testing...")
         codebook = _save_codebook(model, k, random_length, combination, dirname)
-        input_power = 1.
-        m_ask_codewords = max([len(np.unique(i)) for i in codebook[2]])
-        noise_var_eve = input_power/(2*np.log2(m_ask_codewords)*k/n*10.**(train_snr['eve']/10.))
+        energy_symbol = np.var(codebook[2])
+        #m_ask_codewords = max([len(np.unique(i)) for i in codebook[2]])
+        #noise_var_eve = input_power/(2*np.log2(m_ask_codewords)*k/n*10.**(train_snr['eve']/10.))
         idx_noise_layer = [type(t) == AlwaysOnGaussianNoise for t in model.layers].index(True)
-        test_noise = input_power/(2*np.log2(m_ask_codewords)*k/n*10**(test_snr/10.))
-        print(m_ask_codewords, np.std(codebook[2], axis=1), noise_var_eve)
+        test_noise = energy_symbol/(2*10**(test_snr/10.))
+        noise_var_eve = energy_symbol/(2*10.**(train_snr['eve']/10.))
+        print(energy_symbol, test_noise, noise_var_eve)
+        #test_noise = input_power/(2*np.log2(m_ask_codewords)*k/n*10**(test_snr/10.))
+        #print(m_ask_codewords, np.std(codebook[2], axis=1), noise_var_eve)
         model.layers[idx_noise_layer].stddev = np.sqrt(test_noise)
         pred = model.predict(test_set)[0]
         pred_bit = np.round(pred)
@@ -345,4 +318,3 @@ if __name__ == "__main__":
     history, model = loss_weight_sweep(n=code_length, k=4, train_snr=train_snr,
         test_snr=0., random_length=3, test_size=100000, nodes_enc=nodes_enc,
         nodes_dec=nodes_dec)
-    plt.show()

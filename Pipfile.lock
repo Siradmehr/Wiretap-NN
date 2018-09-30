@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "2619193a4403e583fa2ac4a90029823394d29ffa162ab9991ee84eec0ddbc2fa"
+            "sha256": "7e7ef69da7248742e869378f8421880cf8f0017f96d94d086813baa518a65489"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -15,10 +15,6 @@
             }
         ]
     },
-    "default": {
-        "map-classifier": {
-            "path": "/home/karl/ext_repos/map-classifier-python"
-        }
-    },
+    "default": {},
     "develop": {}
 }
