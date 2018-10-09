@@ -9,11 +9,11 @@ from autoencoder_wiretap import calc_wiretap_leakage
 
 
 def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
-    snr_eb_n0_bob = snr_bob*(k/n) #Es/N0 = Eb/(N0*R) --> Eb/N0 = R*Es/N0
-    snr_eb_n0_eve = snr_eve*(k/n)
+    #snr_eb_n0_bob = snr_bob*(k/n) #Es/N0 = Eb/(N0*R) --> Eb/N0 = R*Es/N0
+    #snr_eb_n0_eve = snr_eve*(k/n)
     channel = "BAWGN"
     encoder = encoders.PolarWiretapEncoder(n, channel, channel,
-                                           snr_eb_n0_bob, snr_eb_n0_eve)
+                                           snr_bob, snr_eve)
     k = encoder.info_length
     k_bob = encoder.info_length_bob
     print("k={}\tk_bob={}".format(k, k_bob))
@@ -21,10 +21,10 @@ def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
         return -1, -1, k
 
     modulator = modulators.BpskModulator()
-    #channel = channels.BawgnChannel(test_snr, rate=k/n, input_power=1.)
-    channel = channels.BawgnChannel(test_snr, input_power=1.)
+    channel = channels.BawgnChannel(test_snr, rate=k/n, input_power=1.)
+    #channel = channels.BawgnChannel(test_snr, input_power=1.)
     if alg == "ref":
-        decoder = decoders.PolarWiretapDecoder(n, 'BAWGN', test_snr*(k/n),
+        decoder = decoders.PolarWiretapDecoder(n, 'BAWGN', test_snr,
                                                pos_lookup=encoder.pos_lookup)
     elif alg == "map":
         raise NotImplementedError("The MAP decoder is not implemented yet.")
@@ -43,8 +43,8 @@ def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
     #code_book = encoder.encode_messages(info_book)
     info_book, code_book = encoder.generate_codebook()
     code_book_mod = modulator.modulate_symbols(code_book)
-    #noise_var_eve = 1./(2*k/n*10.**(snr_eve/10.))
-    noise_var_eve = 1./(2*10.**(snr_eve/10.))
+    noise_var_eve = 1./(2*k/n*10.**(snr_eve/10.))
+    #noise_var_eve = 1./(2*10.**(snr_eve/10.))
     print(noise_var_eve)
     leak = calc_wiretap_leakage(info_book, code_book_mod, noise_var_eve)
 

@@ -172,39 +172,14 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     #model.compile('adam', 'binary_crossentropy')
     return model
 
-def _single_simulation(n, k, random_length, loss_weights, train_snr, train_set,
-                       target_eve, test_snr, test_set):
-    info_train, rnd_train = train_set
-    test_info, test_rnd = test_set
-    model = create_model(n, k, symmetrical=False, loss_weights=loss_weights,
-                            train_snr=train_snr, activation='sigmoid',
-                            random_length=random_length)
-    #print("Start training...")
-    history = model.fit(train_set, [info_train, target_eve],
-                        epochs=5000, verbose=0)#, batch_size=2**k)
-    #print("Start testing...")
-    idx_noise_layer = [type(t) == AlwaysOnGaussianNoise for t in model.layers].index(True)
-    test_noise = 1./10**(test_snr/10.)
-    model.layers[idx_noise_layer].stddev = np.sqrt(test_noise)
-    pred = model.predict(test_set)[0]
-    pred_bit = np.round(pred)
-    ber = metrics.ber(test_info, pred_bit)
-    bler = metrics.bler(test_info, pred_bit)
-    leak = history.history['codewords_loss'][-1]
-    total_loss = history.history['loss'][-1]
-    print("BER:\t{}".format(ber))
-    print("BLER:\t{}".format(bler))
-    print("Leak:\t{}".format(leak*k))
-    print("Loss:\t{}\n".format(total_loss))
-    #with open(results_file, 'a') as outf:
-    #    outf.write("{}\t{}\t{}\t{}\t{}\t{}\n".format(
-    #        *combination, ber, bler, leak, total_loss))
-    info_all, rand_all, cw_all = _save_codebook(model, k, random_length, combination)
-    return ber, leak*k
+def _ebn0_to_esn0(snr, rate=1.):
+    return snr + np.log10(rate)
 
 def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
                       random_length=3, loss_weights=[.5, .5], test_size=30000,
                       nodes_enc=None, nodes_dec=None):
+    train_snr['eve'] = _ebn0_to_esn0(train_snr['eve'], k/n)
+    test_snr = _ebn0_to_esn0(test_snr, k/n)
     dirname = DIRNAME.format(n=n, k=k, r=random_length, bob=test_snr,
                              eve=train_snr['eve'], train=train_snr['bob'])
     os.makedirs(os.path.join("results", dirname), exist_ok=True)
@@ -224,8 +199,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
     #                [.6, .4], [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
     #_weights = np.linspace(0.13, .14, 5)  # 5000 epochs
     #_weights = np.linspace(0.1, .6, 10)
-    #_weights = np.linspace(0.01, .3, 15)
-    _weights = np.linspace(0.01, .3, 3)
+    _weights = np.linspace(0.01, .4, 15)
     loss_weights = [[1.-k, k] for k in _weights]
     results_file = 'lwc-B{bob}E{eve}-T{0}-n{1}-k{2}-r{3}.dat'.format(test_snr, n, k, random_length, **train_snr)
     results_file = os.path.join("results", dirname, results_file)
@@ -239,7 +213,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
                              nodes_dec=nodes_dec)
         #print("Start training...")
         history = model.fit([info_train, rnd_train], [info_train, target_eve],
-                            epochs=2000, verbose=0, shuffle=False, 
+                            epochs=10000, verbose=0, shuffle=False, 
                             batch_size=len(info_train))
         #history = model.fit([info_book], [info_book], epochs=400, verbose=0, batch_size=2**k)
         #return history, model
@@ -251,7 +225,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         idx_noise_layer = [type(t) == AlwaysOnGaussianNoise for t in model.layers].index(True)
         test_noise = energy_symbol/(2*10**(test_snr/10.))
         noise_var_eve = energy_symbol/(2*10.**(train_snr['eve']/10.))
-        print(energy_symbol, test_noise, noise_var_eve)
+        print(energy_symbol, test_snr, train_snr['eve'], test_noise, noise_var_eve)
         #test_noise = input_power/(2*np.log2(m_ask_codewords)*k/n*10**(test_snr/10.))
         #print(m_ask_codewords, np.std(codebook[2], axis=1), noise_var_eve)
         model.layers[idx_noise_layer].stddev = np.sqrt(test_noise)
