@@ -61,7 +61,8 @@ def loss_leakage_gauss_mix(y_true, y_pred, k, r, dim, noise_pow=.5):
     entr_zm = []
     for i in range(2**k):
         _y_pred_message = y_pred[i*split_len:(i+1)*split_len, :]
-        _entr_zm = tensor_entropy_gauss_mix_upper(_y_pred_message, sigma, split_len, dim)
+        #_entr_zm = tensor_entropy_gauss_mix_upper(_y_pred_message, sigma, split_len, dim)
+        _entr_zm = tensor_entropy_gauss_mix_lower(_y_pred_message, sigma, split_len, dim)
         entr_zm.append(_entr_zm)
     entr_zm = K.concatenate(entr_zm, axis=0)
     entr_zm = K.mean(entr_zm, axis=0)
@@ -104,6 +105,23 @@ def tensor_entropy_gauss_mix_upper(mu, sig, batch_size, dim=None):
     outer_sum = K.sum(weight*log_inner, axis=0)
     entropy_kl = dim/2 - outer_sum
     return entropy_kl
+
+def tensor_entropy_gauss_mix_lower(mu, sig, batch_size, dim=None, alpha=.5):
+    """Calculate the upper bound of the gaussian mixture entropy using the 
+    KL-divergence as distance (Kolchinsky et al, 2017)
+    """
+    sig = sig/(alpha*(1.-alpha))
+    weight = 1./batch_size
+    x = K.repeat_elements(mu, batch_size, axis=0)
+    mu = K.tile(mu, (batch_size, 1))
+    dim = np.shape(sig)[0]
+    _factor_log = -(dim/2)*np.log(2*np.pi*sig[0, 0])
+    norm_exp = tensor_norm_pdf_exponent(x, mu, sig)
+    norm_exp = K.reshape(norm_exp, (batch_size, batch_size, -1))
+    log_inner = np.log(weight) + _factor_log + K.logsumexp(norm_exp, axis=1, keepdims=True)
+    outer_sum = K.sum(weight*log_inner, axis=0)
+    entropy = dim/2 - dim/2*np.log(alpha*(1.-alpha)) - outer_sum
+    return entropy
 
 def tensor_norm_pdf_exponent(x, mu, sigma):
     _tensor_sig_inv = K.constant(np.linalg.inv(sigma), dtype='float32')
@@ -173,7 +191,7 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     return model
 
 def _ebn0_to_esn0(snr, rate=1.):
-    return snr + np.log10(rate)
+    return snr + 10*np.log10(rate)
 
 def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
                       random_length=3, loss_weights=[.5, .5], test_size=30000,
@@ -199,7 +217,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
     #                [.6, .4], [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
     #_weights = np.linspace(0.13, .14, 5)  # 5000 epochs
     #_weights = np.linspace(0.1, .6, 10)
-    _weights = np.linspace(0.01, .4, 15)
+    _weights = np.linspace(0.01, .6, 20)
     loss_weights = [[1.-k, k] for k in _weights]
     results_file = 'lwc-B{bob}E{eve}-T{0}-n{1}-k{2}-r{3}.dat'.format(test_snr, n, k, random_length, **train_snr)
     results_file = os.path.join("results", dirname, results_file)
@@ -276,8 +294,8 @@ def calc_wiretap_leakage(info, codewords, noise_var):
     for _mess_idx in np.unique(idx_rev):
         _idx = np.where(idx_rev == _mess_idx)[0]
         _relevant_codewords = codewords[_idx]
-        #entr_zm.append(it.entropy_gauss_mix_lower(_relevant_codewords, noise_var))
-        entr_zm.append(it.entropy_gauss_mix_upper(_relevant_codewords, noise_var))
+        entr_zm.append(it.entropy_gauss_mix_lower(_relevant_codewords, noise_var))
+        #entr_zm.append(it.entropy_gauss_mix_upper(_relevant_codewords, noise_var))
     entr_zm = np.mean(entr_zm)
     leak = (entr_z - entr_zm)/np.log(2)
     return leak
@@ -285,10 +303,10 @@ def calc_wiretap_leakage(info, codewords, noise_var):
 if __name__ == "__main__":
     train_snr = {'bob': 2., 'eve': -5}
     code_length = 16
-    #nodes_enc = [8*code_length, code_length]
-    #nodes_dec = [8*code_length]
-    nodes_enc = [8*code_length, 4*code_length, 2*code_length, code_length]
-    nodes_dec = [4*code_length]
+    nodes_enc = [8*code_length, 4*code_length, code_length]
+    nodes_dec = [8*code_length, 4*code_length]
+    #nodes_enc = [8*code_length, 4*code_length, 2*code_length, code_length]
+    #nodes_dec = [4*code_length]
     history, model = loss_weight_sweep(n=code_length, k=4, train_snr=train_snr,
         test_snr=0., random_length=3, test_size=100000, nodes_enc=nodes_enc,
         nodes_dec=nodes_dec)
