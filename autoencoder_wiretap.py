@@ -127,7 +127,7 @@ def tensor_entropy_gauss_mix_lower(mu, sig, batch_size, dim=None, alpha=.5):
     norm_exp = K.reshape(norm_exp, (batch_size, batch_size, -1))
     log_inner = np.log(weight) + _factor_log + K.logsumexp(norm_exp, axis=1, keepdims=True)
     outer_sum = K.sum(weight*log_inner, axis=0)
-    entropy = dim/2 - dim/2*np.log(alpha*(1.-alpha)) - outer_sum
+    entropy = dim/2 + dim/2*np.log(alpha*(1.-alpha)) - outer_sum
     return entropy
 
 def tensor_norm_pdf_exponent(x, mu, sigma):
@@ -257,6 +257,9 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         #m_ask_codewords = max([len(np.unique(i)) for i in codebook[2]])
         #noise_var_eve = input_power/(2*np.log2(m_ask_codewords)*k/n*10.**(train_snr['eve']/10.))
         #idx_noise_layer = [type(t) == AlwaysOnGaussianNoise for t in model.layers].index(True)
+        idx_noise_layer = [type(t) == TestOnlyGaussianNoise for t in model.layers].index(True)
+        idx_noise_layer2 = [type(t) == layers.GaussianNoise for t in model.layers].index(True)
+        print(model.layers[idx_noise_layer].stddev, model.layers[idx_noise_layer2].stddev)
         #test_noise = energy_symbol/(2*10**(test_snr/10.))
         noise_var_eve = energy_symbol/(2*10.**(train_snr['eve']/10.))
         #print(energy_symbol, test_snr, train_snr['eve'], test_noise, noise_var_eve)
@@ -273,7 +276,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         print("BER:\t{}".format(ber))
         print("BLER:\t{}".format(bler))
         print("Leak:\t{}".format(leak*k))
-        print("Loss:\t{}".format(total_loss))
+        #print("Loss:\t{}".format(total_loss))
         leak = calc_wiretap_leakage(codebook[0], codebook[2], noise_var_eve)
         print("Real leak:\t{}\n".format(leak))
         with open(results_file, 'a') as outf:
@@ -330,7 +333,7 @@ if __name__ == "__main__":
     #combinations = (([code_length], []),) 
     #combinations = (([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length]),)
     for comb in combinations:
-	    train_snr = {'bob': 2., 'eve': -5}
+	    train_snr = {'bob': -10., 'eve': -5}
 	    history, model = loss_weight_sweep(n=code_length, k=4, train_snr=train_snr,
-		test_snr=0., random_length=3, test_size=5e4, nodes_enc=comb[0],
+		test_snr=0., random_length=3, test_size=1e4, nodes_enc=comb[0],
 		nodes_dec=comb[1])

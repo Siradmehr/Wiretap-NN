@@ -15,14 +15,8 @@ m = np.vstack(mu)
 y = np.zeros((4, 3))
 power = .5
 
-#model = models.Sequential()
-#model.add(layers.Dense(5, input_shape=(3,)))
-#model.add(layers.Dense(3, activation='sigmoid'))
-#model.compile('adam', loss=lambda y_true, y_pred: loss_leakage_gauss_mix(y_true, y_pred, 1, 1, 3, power))
-#model.fit(m, y, batch_size=len(m), verbose=2, epochs=3)
-
 k = int(np.log2(len(mu)))
-h_zm = [it.entropy_gauss_mix_upper(_mu, power) for _mu in mu]
+h_zm = [it.entropy_gauss_mix_lower(_mu, power) for _mu in mu]
 h_z = it.entropy_gauss_mix_upper(m, power)
 expected = (h_z - np.mean(h_zm))/(np.log(2)*k)
 t_m = K.variable(m, dtype='float32')
