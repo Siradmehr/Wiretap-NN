@@ -46,10 +46,11 @@ def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
     code_book_mod = modulator.modulate_symbols(code_book)
     noise_var_eve = 1./(2*k_bob/n*10.**(snr_eve/10.))
     #noise_var_eve = 1./(2*k/n*10.**(snr_eve/10.))
-    print(noise_var_eve)
+    #print(noise_var_eve)
     leak = calc_wiretap_leakage(info_book, code_book_mod, noise_var_eve)
 
-    test_set = messages.generate_data(k, number=100000, binary=True)
+    #test_set = messages.generate_data(k, number=100000, binary=True)
+    test_set = messages.generate_data(k, number=100, binary=True)
     test_code = encoder.encode_messages(test_set)
     test_mod = modulator.modulate_symbols(test_code)
     rec_mod = channel.transmit_data(test_mod)

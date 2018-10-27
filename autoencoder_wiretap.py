@@ -230,9 +230,9 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
     #loss_weights = [[0., 1.], [.1, .9], [.2, .8], [.3, .7], [.4, .6], [.5, .5],
     #                [.6, .4], [.7, .3], [.8, .2], [.9, .1], [1., 0.]]
     #_weights = np.linspace(0.13, .14, 5)  # 5000 epochs
-    #_weights = np.linspace(0.1, .6, 10)
-    #_weights = np.linspace(.001, .9, 40)
-    _weights = np.logspace(np.log10(.001), np.log10(.9), 40)
+    #_weights = np.logspace(np.log10(.001), np.log10(.9), 40)
+    #_weights = np.logspace(-1, -4, 40)
+    _weights = np.logspace(np.log10(.25), -4, 20)
     loss_weights = [[1.-k, k] for k in _weights]
     loss_weights.append([1, 0])
     results_file = 'lwc-B{bob}E{eve}-T{0}-n{1}-k{2}-r{3}.dat'.format(test_snr, n, k, random_length, **train_snr)
@@ -276,7 +276,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         print("BER:\t{}".format(ber))
         print("BLER:\t{}".format(bler))
         print("Leak:\t{}".format(leak*k))
-        #print("Loss:\t{}".format(total_loss))
+        print("Loss:\t{}".format(total_loss))
         leak = calc_wiretap_leakage(codebook[0], codebook[2], noise_var_eve)
         print("Real leak:\t{}\n".format(leak))
         with open(results_file, 'a') as outf:
@@ -296,7 +296,6 @@ def _save_codebook(model, info_length, random_length, combination, dirname='.'):
     results_file = "codewords-{}.dat".format(combination)
     dirname = os.path.join('results', dirname)#, results_file)
     results_file = os.path.join(dirname, results_file)
-    #results_file = os.path.join('codewords', results_file)
     with open(results_file, 'w') as outf:
         outf.write("mess\trand\tcodeword\n")
         for _info, _rand, _cw in zip(info, rand, codewords):
@@ -304,10 +303,8 @@ def _save_codebook(model, info_length, random_length, combination, dirname='.'):
     return info, rand, codewords
 
 def calc_wiretap_leakage(info, codewords, noise_var):
-    #snr_eve_lin = 10.**(snr_eve/10.)
-    #input_power = 1.
-    #noise_var = input_power/snr_eve_lin
     entr_z = it.entropy_gauss_mix_upper(codewords, noise_var)
+    #entr_z = it.entropy_gauss_mix_lower(codewords, noise_var)
     messages, idx_rev = np.unique(info, axis=0, return_inverse=True)
     entr_zm = []
     for _mess_idx in np.unique(idx_rev):
@@ -320,20 +317,12 @@ def calc_wiretap_leakage(info, codewords, noise_var):
     return leak
 
 if __name__ == "__main__":
-#    train_snr = {'bob': 20., 'eve': -5}
     code_length = 16
-#    nodes_enc = [code_length]
-#    nodes_dec = []
-#    #nodes_enc = [8*code_length, 4*code_length, code_length]
-#    #nodes_dec = [8*code_length, 4*code_length]
-#    history, model = loss_weight_sweep(n=code_length, k=4, train_snr=train_snr,
-#        test_snr=0., random_length=3, test_size=100000, nodes_enc=nodes_enc,
-#        nodes_dec=nodes_dec)
     combinations = (([code_length], []), ([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length]))
     #combinations = (([code_length], []),) 
     #combinations = (([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length]),)
     for comb in combinations:
-	    train_snr = {'bob': -10., 'eve': -5}
+	    train_snr = {'bob': 5., 'eve': -5}
 	    history, model = loss_weight_sweep(n=code_length, k=4, train_snr=train_snr,
 		test_snr=0., random_length=3, test_size=1e4, nodes_enc=comb[0],
 		nodes_dec=comb[1])
