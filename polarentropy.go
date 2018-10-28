@@ -6,7 +6,6 @@ package main
 
 import (
 	"fmt"
-	//"log"
 	"math"
 	"math/rand"
 
@@ -15,6 +14,13 @@ import (
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat/distmv"
 	//"gonum.org/v1/gonum/stat/distuv"
+	"bufio"
+	"os"
+	"encoding/csv"
+	"log"
+	//"reflect"
+	"strings"
+	"strconv"
 )
 
 func main() {
@@ -146,19 +152,21 @@ func GetRun(name string) Run {
 	c := Run{
 		Name:          name,
 		//NumComponents: int(math.Pow(2, 7)),
-		NumComponents: 2,
+		NumComponents: 128,
 	}
 
 	switch name {
 	default:
 		panic("unknown case name")
 	case "polar_wiretap":
-		dim := 4
+		dim := 16
 		//hypers := make([][]float64, 3)
-		hypers := [][]float64{
-			{0, 1, 2, 3},
-			{4, 5, 6, 7},
-		}
+		_, codewords := readCodebook("polar_wtc_codebook.dat")
+		hypers := codewords
+		//hypers := [][]float64{
+		//	{0, 1, 2, 3},
+		//	{4, 5, 6, 7},
+		//}
 		c.DistGen = GaussianFixedCenter{dim, 2.234}
 		c.Hypers = hypers
 		c.XLabel = "Polar Wiretap"
@@ -255,4 +263,47 @@ func eyeSym(dim int) *mat.SymDense {
 		m.SetSym(i, i, 1)
 	}
 	return m
+}
+
+func readCodebook(codebookfile string) ([][]float64, [][]float64) {
+	f, _ := os.Open(codebookfile)
+	r := csv.NewReader(bufio.NewReader(f))
+	r.Comma = ','
+	//r := csv.NewReader(strings.NewReader(in))
+	records, err := r.ReadAll()
+	if err != nil {
+		log.Fatal(err)
+	}
+	//fmt.Print(records)
+	messages := make([][]float64, len(records))
+	codewords := make([][]float64, len(records))
+	fmt.Println(len(records))
+	for value := range records{
+		messages[value] = parseRecords(records[value][0])
+		codewords[value] = parseRecords(records[value][1])
+		//fmt.Println(messages)
+		//fmt.Println(records[value][0], reflect.TypeOf(records[value][0]))
+	}
+	return messages, codewords
+}
+
+func parseRecords(record string) []float64 {
+	splits := splitTags(record)
+	var mess = []float64{}
+	for _, i := range splits {
+		j, err := strconv.ParseFloat(i, 64)
+		if err != nil {
+			panic(err)
+		}
+		mess = append(mess, j)
+	}
+	fmt.Println(mess)
+	return mess
+}
+
+func splitTags(entry string) []string {
+	entry = strings.Trim(entry, "[")
+	entry = strings.Trim(entry, "]")
+	tags := strings.Split(entry, ", ")
+	return tags
 }
