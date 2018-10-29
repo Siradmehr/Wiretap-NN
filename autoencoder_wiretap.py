@@ -196,6 +196,7 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     model.compile('adam', loss_weights=loss_weights,#loss_weights=[.8, .2],
                   #loss=['mse', lambda x, y: loss_gauss_mix_entropy(x, y, 2**info_length, code_length, noise_pow=train_noise['eve'], k=info_length)])
                   loss=['mse', lambda x, y: loss_leakage_gauss_mix(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'])])
+    print(train_noise['eve'])
     #model = models.Model(inputs=[main_input], outputs=[output_layer_bob])
     #model.compile('adam', 'binary_crossentropy')
     return model
@@ -262,6 +263,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         print(model.layers[idx_noise_layer].stddev, model.layers[idx_noise_layer2].stddev)
         #test_noise = energy_symbol/(2*10**(test_snr/10.))
         noise_var_eve = energy_symbol/(2*10.**(train_snr['eve']/10.))
+        print(noise_var_eve)
         #print(energy_symbol, test_snr, train_snr['eve'], test_noise, noise_var_eve)
         #test_noise = input_power/(2*np.log2(m_ask_codewords)*k/n*10**(test_snr/10.))
         #print(m_ask_codewords, np.std(codebook[2], axis=1), noise_var_eve)
