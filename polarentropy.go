@@ -13,6 +13,7 @@ import (
 	"gonum.org/v1/gonum/floats"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat/distmv"
+	"gonum.org/v1/gonum/stat"
 	//"gonum.org/v1/gonum/stat/distuv"
 	"bufio"
 	"os"
@@ -24,22 +25,32 @@ import (
 )
 
 func main() {
-	names := []string{
-		"polar_wiretap",/*
-		"gauss_sweep_skew",
-		"gauss_sweep_size",
-		"gauss_sweep_clusters",
-		"gauss_sweep_dim",*/
-	}
+	//names := []string{
+	//	"polar_wiretap",/*
+	//	"gauss_sweep_skew",
+	//	"gauss_sweep_size",
+	//	"gauss_sweep_clusters",
+	//	"gauss_sweep_dim",*/
+	//}
 
 
-	for _, name := range names {
-		fmt.Println("Running ", name)
-		run := GetRun(name)
+	mcEnt := make([]float64, 16) // store of the entropy from Monte Carlo.
+	//for _, name := range names {
+	seed := int64(rand.Int())
+	fmt.Println(seed)
+	rnd := rand.New(rand.NewSource(seed))
+	for messageNumber := 0; messageNumber < 16; messageNumber++ {
+		//fmt.Println("Running ", name)
+		fmt.Println("Running ", messageNumber)
+		run := GetRun("polar_wiretap")
+		codebookFile := fmt.Sprintf("codebook-%d.csv", messageNumber)
+		_, codewords := readCodebook(codebookFile)
+		run.SetHypers(codewords)
 
 		// Fix the random samples for each run. Keep the randomness consistent
 		// across the hyper sweep to reduce noise.
-		rnd := rand.New(rand.NewSource(1))
+		//rnd := rand.New(rand.NewSource(2))
+		//rnd := rand.New(rand.NewSource(int64(messageNumber)))
 
 		// The code allows the dimension of the problem to adjust with the
 		// hyperparameters. Find the maximum dimension used.
@@ -78,11 +89,11 @@ func main() {
 		// estimators
 		entComponents := make([]mixent.Component, run.NumComponents)
 		components := make([]Component, run.NumComponents)
-		mcEnt := make([]float64, 1) // store of the entropy from Monte Carlo.
+		//mcEnt := make([]float64, 1) // store of the entropy from Monte Carlo.
 
-		estEnts := mat.NewDense(len(run.Hypers), len(run.Estimators), nil) // entropy from estimators.
+		estEnts := mat.NewDense(1, len(run.Estimators), nil) // entropy from estimators.
 		for _, mean := range run.Hypers {
-			fmt.Println(mean)
+			//fmt.Println(mean)
 			// Construct the components given the random samples and hyperparameter.
 			for j := range components {
 				components[j] = run.DistGen.ComponentFrom(compSamps.RawRowView(j), mean)
@@ -94,11 +105,12 @@ func main() {
 			v := estimator.MixtureEntropy(entComponents, nil)
 			estEnts.Set(0, j, v)
 		}
+		fmt.Println(estEnts)
 
-			// Estimate the entropy from Monte Carlo.
+		// Estimate the entropy from Monte Carlo.
 		dim := run.DistGen.CompDim()
 		sv := mcSamps.Slice(0, run.MCEntropySamples, 0, dim).(*mat.Dense)
-		mcEnt[0] = mcEntropy(components, randComps, sv)
+		mcEnt[messageNumber] = mcEntropy(components, randComps, sv)
 		fmt.Println(mcEnt)
 
 		// Plot the results.
@@ -107,6 +119,7 @@ func main() {
 		//	log.Fatal(err)
 		//}
 	}
+	fmt.Println(stat.Mean(mcEnt, nil))
 }
 
 // mcEntropy estimates the entropy of the mixture distribution given the pre-drawn
@@ -146,13 +159,18 @@ type Run struct {
 	LogX   bool
 }
 
+func (r *Run) SetHypers(hypers [][]float64){
+	r.Hypers = hypers
+	r.NumComponents = len(hypers)
+}
+
 func GetRun(name string) Run {
 	var isUniform bool
 
 	c := Run{
 		Name:          name,
 		//NumComponents: int(math.Pow(2, 7)),
-		NumComponents: 128,
+		//NumComponents: 128,
 	}
 
 	switch name {
@@ -167,10 +185,11 @@ func GetRun(name string) Run {
 		//	{0, 1, 2, 3},
 		//	{4, 5, 6, 7},
 		//}
-		c.DistGen = GaussianFixedCenter{dim, 2.234}
+		c.DistGen = GaussianFixedCenter{dim, 3.614031611621005}
 		c.Hypers = hypers
 		c.XLabel = "Polar Wiretap"
 		c.LogX = true
+		c.NumComponents = len(codewords)
 	}
 	if isUniform {
 		c.Estimators = []mixent.Estimator{
@@ -191,7 +210,7 @@ func GetRun(name string) Run {
 			mixent.ComponentCenters{},
 			mixent.ELK{},
 		}
-		c.MCEntropySamples = 5000
+		c.MCEntropySamples = 10000
 	}
 	return c
 }
@@ -277,7 +296,7 @@ func readCodebook(codebookfile string) ([][]float64, [][]float64) {
 	//fmt.Print(records)
 	messages := make([][]float64, len(records))
 	codewords := make([][]float64, len(records))
-	fmt.Println(len(records))
+	//fmt.Println(len(records))
 	for value := range records{
 		messages[value] = parseRecords(records[value][0])
 		codewords[value] = parseRecords(records[value][1])
@@ -297,7 +316,7 @@ func parseRecords(record string) []float64 {
 		}
 		mess = append(mess, j)
 	}
-	fmt.Println(mess)
+	//fmt.Println(mess)
 	return mess
 }
 

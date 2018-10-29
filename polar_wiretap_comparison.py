@@ -46,13 +46,11 @@ def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
     code_book_mod = modulator.modulate_symbols(code_book)
     noise_var_eve = 1./(2*k_bob/n*10.**(snr_eve/10.))
     #noise_var_eve = 1./(2*k/n*10.**(snr_eve/10.))
-    #print(noise_var_eve)
-    with open("polar_wtc_codebook.dat", 'w') as outfile:
-        for _message, _codeword in zip(info_book, code_book_mod):
-            outfile.write("\"{}\",\"{}\"\n".format(list(_message), list(_codeword)))
+    print(noise_var_eve)
+    #write_codebook_files(info_book, code_book_mod)
     leak = calc_wiretap_leakage(info_book, code_book_mod, noise_var_eve)
     print(leak)
-    return
+    #return
 
     #test_set = messages.generate_data(k, number=100000, binary=True)
     test_set = messages.generate_data(k, number=100, binary=True)
@@ -72,6 +70,18 @@ def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
         outf.write("{}\t{}\t{}\n".format(ber, bler, leak))
     return ber, leak, k
 
+def write_codebook_files(messages, codewords):
+    with open("polar_wtc_codebook.csv", 'w') as outfile:
+        for _message, _codeword in zip(messages, codewords):
+            outfile.write("\"{}\",\"{}\"\n".format(list(_message), list(_codeword)))
+    idx_rev = np.unique(messages, axis=0, return_inverse=True)[1]
+    for num, _mess_idx in enumerate(np.unique(idx_rev)):
+        _idx = np.where(idx_rev == _mess_idx)[0]
+        _relevant_codewords = codewords[_idx]
+        _relevant_message = messages[_idx]
+        with open("codebook-{}.csv".format(num), 'w') as outfile:
+            for _message, _codeword in zip(_relevant_message, _relevant_codewords):
+                outfile.write("\"{}\",\"{}\"\n".format(list(_message), list(_codeword)))
 
 if __name__ == "__main__":
     snr_bob = 0.
