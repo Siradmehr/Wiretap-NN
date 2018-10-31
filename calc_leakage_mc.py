@@ -3,10 +3,13 @@ import ast
 import numpy as np
 import pandas as pd
 
+CONFIG = "config2"
+TSNR = "t2"
+
 def main():
-    data = pd.read_csv("lwc-config1-t5.dat", sep='\t')
-    file_full = "results-config1-full.dat"
-    file_cond = "results-config1-conditional.dat"
+    data = pd.read_csv("lwc-{}-{}.dat".format(CONFIG, TSNR), sep='\t')
+    file_full = "results-{}-{}-full.dat".format(CONFIG, TSNR)
+    file_cond = "results-{}-{}-conditional.dat".format(CONFIG, TSNR)
     entr_z = parse_file(file_full)
     entr_zm = parse_file(file_cond)
     leak = {'wB': [], 'wE': [], 'LeakMC': []}
@@ -20,9 +23,12 @@ def main():
         leak['wE'].append(we)
         leak['LeakMC'].append(_leak)
     data_new = pd.DataFrame(leak)
-    data_new = pd.merge(data, data_new)
+    print(data)
     print(data_new)
-    data_new.to_csv('lwc-config1-t5-mc.dat', sep='\t', index=False)
+    #data_new = pd.merge(data, data_new)
+    data_new = pd.concat((data, data_new['LeakMC']), axis=1)
+    print(data_new)
+    data_new.to_csv('lwc-{}-{}-mc.dat'.format(CONFIG, TSNR), sep='\t', index=False)
 
 def parse_file(filename):
     with open(filename) as infile:
