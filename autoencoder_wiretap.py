@@ -5,6 +5,7 @@ from scipy.stats import multivariate_normal
 from sklearn.metrics import hamming_loss
 from keras import models
 from keras import layers
+from keras import optimizers
 from keras import backend as K
 
 from digcommpy import messages, metrics
@@ -179,7 +180,7 @@ def tensor_norm_pdf(x, mu, sigma):
 def create_model(code_length:int =16, info_length: int =4, activation='relu',
                  symmetrical=True, loss_weights=[.5, .5],
                  train_snr={'bob': 0., 'eve': -5.}, random_length=3,
-                 nodes_enc=None, nodes_dec=None, test_snr=0.):
+                 nodes_enc=None, nodes_dec=None, test_snr=0., optimizer='adam'):
     rate = info_length/code_length
     if nodes_enc is None:
         nodes_enc = [code_length]
@@ -213,7 +214,7 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
                                     name='output_bob')(layer_list_decoder[-1])
     model = models.Model(inputs=[main_input, random_input],
                          outputs=[output_layer_bob, layer_list_enc[-1]])
-    model.compile('adam', loss_weights=loss_weights,
+    model.compile(optimizer, loss_weights=loss_weights,
                   #loss=['mse', lambda x, y: loss_leakage_gauss_mix(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'])])
                   loss=['mse', lambda x, y: loss_leakage_with_gap(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'])])
     return model
@@ -223,7 +224,8 @@ def _ebn0_to_esn0(snr, rate=1.):
 
 def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
                       random_length=3, loss_weights=[.5, .5], test_size=30000,
-                      nodes_enc=None, nodes_dec=None, test_snr_eve=-5.):
+                      nodes_enc=None, nodes_dec=None, test_snr_eve=-5.,
+                      optimizer_config=None):
     #print("Train_snr: {}".format(train_snr))
     train_snr['eve'] = _ebn0_to_esn0(train_snr['eve'], (k+random_length)/n)
     train_snr['bob'] = _ebn0_to_esn0(train_snr['bob'], (k+random_length)/n)
@@ -235,7 +237,8 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
                              ts=np.random.randint(0, 100))
     os.makedirs(os.path.join("results", dirname), exist_ok=True)
     with open(os.path.join("results", dirname, "config"), 'w') as infile:
-        infile.write("Encoder: {}\nDecoder: {}\n".format(nodes_enc, nodes_dec))
+        infile.write("Encoder: {}\nDecoder: {}\nOptimizer: {}\n".format(
+            nodes_enc, nodes_dec, optimizer_config))
     info_book = messages.generate_data(k, binary=True)
     info_train = messages.generate_data(k+random_length, number=None, binary=True)
     info_train = info_train[:, :k]
@@ -257,10 +260,12 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         outf.write("wB\twE\tBER\tBLER\tLeak\tLoss\n")
     for combination in loss_weights:
         print("Loss weight combination: {}".format(combination))
+        optimizer = optimizers.Adam.from_config(optimizer_config)
         model = create_model(n, k, symmetrical=False, loss_weights=combination,
                              train_snr=train_snr, activation='relu',
                              random_length=random_length, nodes_enc=nodes_enc,
-                             nodes_dec=nodes_dec, test_snr=test_snr)
+                             nodes_dec=nodes_dec, test_snr=test_snr,
+                             optimizer=optimizer)
         #print("Start training...")
         history = model.fit([info_train, rnd_train], [info_train, target_eve],
                             epochs=10000, verbose=0, shuffle=False, 
@@ -323,9 +328,11 @@ def calc_wiretap_leakage(info, codewords, noise_var):
 if __name__ == "__main__":
     code_length = 16
     #combinations = (([code_length], []), ([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length]))
-    combinations = (([code_length], []),) 
+    #combinations = (([code_length], []),) 
+    combinations = (([16*code_length, code_length], [8*code_length]),)
     for comb in combinations:
-	    train_snr = {'bob': 0., 'eve': -5.}
-	    history, model = loss_weight_sweep(n=code_length, k=4, train_snr=train_snr,
-		test_snr=0., random_length=3, test_size=1e4, nodes_enc=comb[0],
-		nodes_dec=comb[1], test_snr_eve=-5.)
+            train_snr = {'bob': 0., 'eve': -5.}
+            opt_conf = optimizers.Adam(amsgrad=True).get_config()
+            history, model = loss_weight_sweep(n=code_length, k=4, train_snr=train_snr,
+            test_snr=0., random_length=3, test_size=1e4, nodes_enc=comb[0],
+            nodes_dec=comb[1], test_snr_eve=-5., optimizer_config=opt_conf)

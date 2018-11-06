@@ -3,7 +3,6 @@ import os.path
 import numpy as np
 from digcommpy import messages, decoders, encoders, channels, modulators, metrics
 from digcommpy import information_theory as it
-#from gauss_mix import entropy_gauss_mix_upper, entropy_gauss_mix_lower
 
 from autoencoder_wiretap import calc_wiretap_leakage
 

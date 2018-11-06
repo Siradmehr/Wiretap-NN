@@ -3,7 +3,7 @@ import numpy as np
 from keras import models, layers
 from keras import backend as K
 
-from autoencoder_wiretap import loss_leakage_gauss_mix
+from autoencoder_wiretap import _leak_upper_bound
 from digcommpy import information_theory as it
 
 mu1 = np.array([[1, 2, 3], [4, 5, 6], [-1, 4, 2], [-7, 6, 1]])
@@ -20,7 +20,7 @@ h_zm = [it.entropy_gauss_mix_lower(_mu, power) for _mu in mu]
 h_z = it.entropy_gauss_mix_upper(m, power)
 expected = (h_z - np.mean(h_zm))/(np.log(2)*k)
 t_m = K.variable(m, dtype='float32')
-loss = loss_leakage_gauss_mix(t_m, t_m, k, 2, 3, power)
+loss = _leak_upper_bound(t_m, t_m, k, 2, 3, power)
 
 print("Expected h_z:\t{}".format(h_z))
 print("Expected h_zm:\t{} ({})".format(np.mean(h_zm), h_zm))
