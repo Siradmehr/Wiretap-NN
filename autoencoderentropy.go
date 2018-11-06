@@ -29,12 +29,12 @@ var codebookdir string
 const conditional bool = false
 
 func main() {
-	f, err := os.Create("results-config2-t2-full.dat")
+	f, err := os.Create("results-config2-t0-full.dat")
 	if err != nil {
 		panic(err)
 	}
 	defer f.Close()
-	names := []string{
+	/*names := []string{
 		"[0.75, 0.25]",
 		"[0.8343844692039338, 0.16561553079606614]",
 		"[0.8902859838365491, 0.10971401616345094]",
@@ -56,9 +56,22 @@ func main() {
 		"[0.999849047973461, 0.00015095202653901002]",
 		"[0.9999, 0.0001]",
 		"[1, 0]",
+	}*/
+	names := []string{
+		"[0.5, 0.5]",
+		"[0.5544444444444445, 0.44555555555555554]",
+		"[0.6088888888888889, 0.3911111111111111]",
+		"[0.6633333333333333, 0.33666666666666667]",
+		"[0.7177777777777778, 0.2822222222222222]",
+		"[0.7722222222222223, 0.22777777777777777]",
+		"[0.8266666666666667, 0.17333333333333334]",
+		"[0.8811111111111112, 0.11888888888888888]",
+		"[0.9355555555555556, 0.06444444444444444]",
+		"[0.99, 0.01]",
+		"[1, 0]",
 	}
 	for _, combination := range names {
-		codebookdir = fmt.Sprintf("results/T2/config2-codewords-%s", combination)
+		codebookdir = fmt.Sprintf("results/T0/config2-codewords-%s", combination)
 		fmt.Println(codebookdir)
 
 

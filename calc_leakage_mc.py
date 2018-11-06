@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 CONFIG = "config2"
-TSNR = "t2"
+TSNR = "t0"
 
 def main():
     data = pd.read_csv("lwc-{}-{}.dat".format(CONFIG, TSNR), sep='\t')
@@ -23,10 +23,14 @@ def main():
         leak['wE'].append(we)
         leak['LeakMC'].append(_leak)
     data_new = pd.DataFrame(leak)
+    data = data.sort_values('wB').reset_index()
+    data_new = data_new.sort_values('wB').reset_index()
+    _cols = list(data.columns) + ['LeakMC']
     print(data)
     print(data_new)
     #data_new = pd.merge(data, data_new)
-    data_new = pd.concat((data, data_new['LeakMC']), axis=1)
+    data_new = pd.concat((data, data_new['LeakMC']), axis=1, ignore_index=True)
+    data_new.columns = _cols
     print(data_new)
     data_new.to_csv('lwc-{}-{}-mc.dat'.format(CONFIG, TSNR), sep='\t', index=False)
 
