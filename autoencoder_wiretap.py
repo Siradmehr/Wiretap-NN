@@ -62,12 +62,10 @@ def loss_leakage_gauss_mix(y_true, y_pred, k, r, dim, noise_pow=.5):
     entr_zm = []
     for i in range(2**k):
         _y_pred_message = y_pred[i*split_len:(i+1)*split_len, :]
-        #_entr_zm = tensor_entropy_gauss_mix_upper(_y_pred_message, sigma, split_len, dim)
         _entr_zm = tensor_entropy_gauss_mix_lower(_y_pred_message, sigma, split_len, dim)
         entr_zm.append(_entr_zm)
     entr_zm = K.concatenate(entr_zm, axis=0)
     entr_zm = K.mean(entr_zm, axis=0)
-    #entr_zm = K.repeat_elements(entr_zm, batch_size, 0)
     #return K.mean(entr_z - entr_zm, axis=-1)/(np.log(2)*k)
     return K.square(K.mean(entr_z - entr_zm, axis=-1)/(np.log(2)*k))
 
@@ -106,12 +104,9 @@ def _leak_lower_bound(y_pred, sigma, batch_size, dim, split_len, k):
     #return K.square(K.mean(entr_z - entr_zm, axis=-1)/(np.log(2)*k))
 
 def loss_gauss_mix_entropy(y_true, y_pred, batch_size, dim, noise_pow=.5, k=1):
-    #return K.variable(np.array([[1]]))
-    #return K.max(y_true-y_pred)
     sigma = noise_pow * np.eye(dim)
     entr_gauss_mix = tensor_entropy_gauss_mix_upper(y_pred, sigma, batch_size, dim)
     entr_gauss_mix = K.repeat_elements(entr_gauss_mix, batch_size, 0)
-    #entr_noise = .5*np.log((2*np.pi*np.e)**dim*np.linalg.det(sigma))
     entr_noise = .5*dim*np.log(2*np.pi*np.e*noise_pow)
     return K.mean(entr_gauss_mix - entr_noise, axis=-1)/(np.log(2)*k)
 
@@ -119,24 +114,13 @@ def tensor_entropy_gauss_mix_upper(mu, sig, batch_size, dim=None):
     """Calculate the upper bound of the gaussian mixture entropy using the 
     KL-divergence as distance (Kolchinsky et al, 2017)
     """
-    #weights = np.ones(batch_size, dtype=float)/batch_size
     weight = 1./batch_size
-    #x = K.variable(value=mu)
     x = K.repeat_elements(mu, batch_size, axis=0)
-    #x = K.repeat(x, batch_size)
-    #mu = K.variable(value=mu)
     mu = K.tile(mu, (batch_size, 1))
-    #mu = K.reshape(mu, (batch_size, batch_size, -1))
-    #norm = tensor_norm_pdf(x, mu, sig)
-    #norm = K.reshape(norm, (batch_size, batch_size, -1))
-    #inner_sums = K.sum(weight*norm, axis=1, keepdims=True)
-    #log_inner = K.log(inner_sums)
     dim = np.shape(sig)[0]
-    #_factor = 1./(np.sqrt((2*np.pi)**dim*np.linalg.det(sig)))
     _factor_log = -(dim/2)*np.log(2*np.pi*sig[0, 0])
     norm_exp = tensor_norm_pdf_exponent(x, mu, sig)
     norm_exp = K.reshape(norm_exp, (batch_size, batch_size, -1))
-    #log_inner = np.log(weight*_factor) + K.logsumexp(norm_exp, axis=1, keepdims=True)
     log_inner = np.log(weight) + _factor_log + K.logsumexp(norm_exp, axis=1, keepdims=True)
     outer_sum = K.sum(weight*log_inner, axis=0)
     entropy_kl = dim/2 - outer_sum
@@ -171,8 +155,6 @@ def tensor_norm_pdf(x, mu, sigma):
     _factor = 1./(np.sqrt((2*np.pi)**dim*np.linalg.det(sigma)))
     _tensor_sig_inv = K.constant(np.linalg.inv(sigma), dtype='float32')
     _exponent = K.dot((x-mu), _tensor_sig_inv)
-    #_exponent = K.dot(_exponent, K.transpose(x-mu))
-    #_exponent = K.batch_dot(_exponent, (x-mu), axes=2)
     _exponent = K.batch_dot(_exponent, (x-mu), axes=1)
     _exp = K.exp(-.5*_exponent)
     return _factor*_exp
@@ -205,8 +187,7 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     noise_layer_bob = noise_layers['bob'](layer_list_enc[-1])
     test_noise = 1./(2*10.**(test_snr/10.))
     test_noise_layer = TestOnlyGaussianNoise(np.sqrt(test_noise), input_shape=(code_length,))(noise_layer_bob)
-    #noise_layer_eve = noise_layers['eve'](layer_list_enc[-1])
-    layer_list_decoder = [noise_layer_bob, test_noise_layer]
+    layer_list_decoder = [test_noise_layer]
     for idx, _nodes in enumerate(nodes_dec):
         _new_layer = layers.Dense(_nodes, activation=activation)(layer_list_decoder[idx])
         layer_list_decoder.append(_new_layer)
@@ -226,7 +207,6 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
                       random_length=3, loss_weights=[.5, .5], test_size=30000,
                       nodes_enc=None, nodes_dec=None, test_snr_eve=-5.,
                       optimizer_config=None):
-    #print("Train_snr: {}".format(train_snr))
     train_snr['eve'] = _ebn0_to_esn0(train_snr['eve'], (k+random_length)/n)
     train_snr['bob'] = _ebn0_to_esn0(train_snr['bob'], (k+random_length)/n)
     test_snr_eve = _ebn0_to_esn0(test_snr_eve, (k+random_length)/n)
@@ -248,8 +228,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
                                       binary=True)
     test_set = [test_info, test_rnd]
     target_eve = np.zeros((len(info_train), n))
-    _weights = np.linspace(0.5, .01, 10)
-    #_weights = np.logspace(np.log10(.001), np.log10(.9), 40)
+    _weights = np.linspace(0.5, .01, 5)
     #_weights = np.logspace(np.log10(.25), -4, 20)
     loss_weights = [[1.-k, k] for k in _weights]
     loss_weights.append([1, 0])
@@ -271,10 +250,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
                             epochs=10000, verbose=0, shuffle=False, 
                             batch_size=len(info_train))
         print("Finished training...")
-        #idx_noise_layer = [type(t) == TestOnlyGaussianNoise for t in model.layers].index(True)
-        #idx_noise_layer2 = [type(t) == layers.GaussianNoise for t in model.layers].index(True)
-        #print(model.layers[idx_noise_layer].stddev**2, model.layers[idx_noise_layer2].stddev**2)
-        pred = model.predict(test_set)[0] # Noise is added durint testing
+        pred = model.predict(test_set)[0] # Noise is added during testing
         pred_bit = np.round(pred)
         ber = metrics.ber(test_info, pred_bit)
         bler = metrics.bler(test_info, pred_bit)
@@ -303,7 +279,7 @@ def _save_codebook(model, info_length, random_length, combination, dirname='.'):
                                    [encoder_out_layer.output])
     codewords = layer_output_func([info, rand, 0])[0]
     results_file = "codewords-{}.dat".format(combination)
-    dirname = os.path.join('results', dirname)#, results_file)
+    dirname = os.path.join('results', dirname)
     results_file = os.path.join(dirname, results_file)
     with open(results_file, 'w') as outf:
         outf.write("mess\trand\tcodeword\n")
@@ -313,14 +289,12 @@ def _save_codebook(model, info_length, random_length, combination, dirname='.'):
 
 def calc_wiretap_leakage(info, codewords, noise_var):
     entr_z = it.entropy_gauss_mix_upper(codewords, noise_var)
-    #entr_z = it.entropy_gauss_mix_lower(codewords, noise_var)
     messages, idx_rev = np.unique(info, axis=0, return_inverse=True)
     entr_zm = []
     for _mess_idx in np.unique(idx_rev):
         _idx = np.where(idx_rev == _mess_idx)[0]
         _relevant_codewords = codewords[_idx]
         entr_zm.append(it.entropy_gauss_mix_lower(_relevant_codewords, noise_var))
-        #entr_zm.append(it.entropy_gauss_mix_upper(_relevant_codewords, noise_var))
     entr_zm = np.mean(entr_zm)
     leak = (entr_z - entr_zm)/np.log(2)
     return leak
@@ -332,7 +306,7 @@ if __name__ == "__main__":
     combinations = (([16*code_length, code_length], [8*code_length]),)
     for comb in combinations:
             train_snr = {'bob': 0., 'eve': -5.}
-            opt_conf = optimizers.Adam(amsgrad=True).get_config()
+            opt_conf = optimizers.Adam(amsgrad=False).get_config()
             history, model = loss_weight_sweep(n=code_length, k=4, train_snr=train_snr,
             test_snr=0., random_length=3, test_size=1e4, nodes_enc=comb[0],
             nodes_dec=comb[1], test_snr_eve=-5., optimizer_config=opt_conf)

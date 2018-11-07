@@ -11,3 +11,8 @@ structure, modify the variables at the `main()` function call.
 
 A comparison with a polar wiretap code can be found in the script
 `polar_wiretap_comparsion.py`.
+
+The Go scripts in the `analysis` folder can be used to estimate the entropy of
+a Gaussian mixture, using Monte Carlo simulations. The code is based on/mostly
+copied from
+[https://github.com/btracey/mixent](https://github.com/btracey/mixent).
