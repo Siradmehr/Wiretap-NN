@@ -1,4 +1,5 @@
 import os.path
+import pickle
 
 import numpy as np
 from scipy.stats import multivariate_normal
@@ -206,7 +207,7 @@ def _ebn0_to_esn0(snr, rate=1.):
 def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
                       random_length=3, loss_weights=[.5, .5], test_size=30000,
                       nodes_enc=None, nodes_dec=None, test_snr_eve=-5.,
-                      optimizer_config=None):
+                      optimizer_config=None, save_model=False):
     train_snr['eve'] = _ebn0_to_esn0(train_snr['eve'], (k+random_length)/n)
     train_snr['bob'] = _ebn0_to_esn0(train_snr['bob'], (k+random_length)/n)
     test_snr_eve = _ebn0_to_esn0(test_snr_eve, (k+random_length)/n)
@@ -241,7 +242,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         print("Loss weight combination: {}".format(combination))
         optimizer = optimizers.Adam.from_config(optimizer_config)
         model = create_model(n, k, symmetrical=False, loss_weights=combination,
-                             train_snr=train_snr, activation='relu',
+                             train_snr=train_snr, activation='sigmoid',
                              random_length=random_length, nodes_enc=nodes_enc,
                              nodes_dec=nodes_dec, test_snr=test_snr,
                              optimizer=optimizer)
@@ -268,6 +269,12 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         with open(results_file, 'a') as outf:
             outf.write("{}\t{}\t{}\t{}\t{}\t{}\n".format(
                 *combination, ber, bler, leak, total_loss))
+        if save_model:
+            _model_path = "{}_{}-{}-{}".format(*combination,
+                    int(leak/k*100), int(bler*100))
+            model.save(_model_path+".model", include_optimizer=False)
+            with open(_model_path+'.hist', 'wb') as _hist_file:
+                pickle.dump(history, _hist_file)
     return history, model
 
 def _save_codebook(model, info_length, random_length, combination, dirname='.'):
@@ -302,11 +309,12 @@ def calc_wiretap_leakage(info, codewords, noise_var):
 if __name__ == "__main__":
     code_length = 16
     #combinations = (([code_length], []), ([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length]))
-    #combinations = (([code_length], []),) 
-    combinations = (([16*code_length, code_length], [8*code_length]),)
+    combinations = (([code_length], []),) 
+    #combinations = (([16*code_length, code_length], [8*code_length]),)
     for comb in combinations:
             train_snr = {'bob': 0., 'eve': -5.}
             opt_conf = optimizers.Adam(amsgrad=False).get_config()
             history, model = loss_weight_sweep(n=code_length, k=4, train_snr=train_snr,
             test_snr=0., random_length=3, test_size=1e4, nodes_enc=comb[0],
-            nodes_dec=comb[1], test_snr_eve=-5., optimizer_config=opt_conf)
+            nodes_dec=comb[1], test_snr_eve=-5., optimizer_config=opt_conf,
+            save_model=True)
