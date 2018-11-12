@@ -216,8 +216,9 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
     dirname = DIRNAME.format(n=n, k=k, r=random_length, bob=test_snr,
                              eve=train_snr['eve'], train=train_snr['bob'],
                              ts=np.random.randint(0, 100))
-    os.makedirs(os.path.join("results", dirname), exist_ok=True)
-    with open(os.path.join("results", dirname, "config"), 'w') as infile:
+    dirname = os.path.join("results", dirname)
+    os.makedirs(dirname, exist_ok=True)
+    with open(os.path.join(dirname, "config"), 'w') as infile:
         infile.write("Encoder: {}\nDecoder: {}\nOptimizer: {}\n".format(
             nodes_enc, nodes_dec, optimizer_config))
     info_book = messages.generate_data(k, binary=True)
@@ -235,7 +236,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
     loss_weights.append([1, 0])
     results_file = 'lwc-B{bob}E{eve}-T{0}-n{1}-k{2}-r{3}.dat'.format(
                     test_snr, n, k, random_length, **train_snr)
-    results_file = os.path.join("results", dirname, results_file)
+    results_file = os.path.join(dirname, results_file)
     with open(results_file, 'w') as outf:
         outf.write("wB\twE\tBER\tBLER\tLeak\tLoss\n")
     for combination in loss_weights:
@@ -272,9 +273,10 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         if save_model:
             _model_path = "{}_{}-{}-{}".format(*combination,
                     int(leak/k*100), int(bler*100))
+            _model_path = os.path.join(dirname, _model_path)
             model.save(_model_path+".model", include_optimizer=False)
             with open(_model_path+'.hist', 'wb') as _hist_file:
-                pickle.dump(history, _hist_file)
+                pickle.dump(history.history, _hist_file)
     return history, model
 
 def _save_codebook(model, info_length, random_length, combination, dirname='.'):
@@ -286,10 +288,9 @@ def _save_codebook(model, info_length, random_length, combination, dirname='.'):
                                    [encoder_out_layer.output])
     codewords = layer_output_func([info, rand, 0])[0]
     results_file = "codewords-{}.dat".format(combination)
-    dirname = os.path.join('results', dirname)
     results_file = os.path.join(dirname, results_file)
     with open(results_file, 'w') as outf:
-        outf.write("mess\trand\tcodeword\n")
+        outf.write("messsage\trandom\tcodeword\n")
         for _info, _rand, _cw in zip(info, rand, codewords):
             outf.write("{}\t{}\t{}\n".format(list(_info), list(_rand), list(_cw)))
     return info, rand, codewords
@@ -309,8 +310,8 @@ def calc_wiretap_leakage(info, codewords, noise_var):
 if __name__ == "__main__":
     code_length = 16
     #combinations = (([code_length], []), ([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length]))
-    combinations = (([code_length], []),) 
-    #combinations = (([16*code_length, code_length], [8*code_length]),)
+    #combinations = (([code_length], []),) 
+    combinations = (([16*code_length, code_length], []),)
     for comb in combinations:
             train_snr = {'bob': 0., 'eve': -5.}
             opt_conf = optimizers.Adam(amsgrad=False).get_config()
