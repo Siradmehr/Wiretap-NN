@@ -225,7 +225,7 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
                                     name='output_bob')(layer_list_decoder[-1])
     model = models.Model(inputs=[main_input, random_input],
                          outputs=[output_layer_bob, layer_list_enc[-1]])
-    model.compile(optimizer,#loss_weights=loss_weights,
+    model.compile(optimizer, loss_weights=loss_weights,
                   #loss=['mse', lambda x, y: loss_leakage_gauss_mix(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'])])
                   #loss=['mse', lambda x, y: loss_leakage_with_gap(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'])])
                   loss=['mse', lambda x, y: K.square(loss_leakage_upper(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve']))])
@@ -262,11 +262,12 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
                                       binary=True)
     test_set = [test_info, test_rnd]
     target_eve = np.zeros((len(info_train), n))
-    _weights = np.linspace(0.5, .01, 3)
+    #_weights = np.linspace(0.5, .01, 3)
     #_weights = np.linspace(0.7, 0.2, 8)
+    _weights = np.linspace(0, 1, 11)
     #_weights = np.logspace(np.log10(.25), -4, 20)
     loss_weights = [[1.-k, k] for k in _weights]
-    loss_weights.append([1, 0])
+    #loss_weights.append([1, 0])
     #loss_weights = [[0.8675, .1325]]
     results_file = 'lwc-B{bob}E{eve}-T{0}-n{1}-k{2}-r{3}.dat'.format(
                     test_snr, n, k, random_length, **train_snr)
@@ -348,8 +349,8 @@ def calc_wiretap_leakage(info, codewords, noise_var):
 
 if __name__ == "__main__":
     code_length = 16
-    #combinations = (([code_length], []), ([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length]))
-    combinations = (([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length]),)
+    combinations = (([code_length], []), ([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length]))
+    #combinations = (([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length]),)
     #combinations = (([code_length], []),) 
     #combinations = (([16*code_length, code_length], []),)
     for comb in combinations:
