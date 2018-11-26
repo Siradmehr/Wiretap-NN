@@ -74,7 +74,10 @@ def loss_leakage_gauss_mix(y_true, y_pred, k, r, dim, noise_pow=.5):
 
 def loss_leakage_upper(y_true, y_pred, k, r, dim, noise_pow=.5):
     batch_size = int(2**(r+k))
-    leak_upper_bound = _leak_new_upper_bound(y_pred, noise_pow, batch_size, r, 1.)
+    split_len = int(2**r)
+    #leak_upper_bound = _leak_new_upper_bound(y_pred, noise_pow, batch_size, r, 1.)
+    sigma = noise_pow * np.eye(dim)
+    leak_upper_bound = _leak_upper_bound(y_pred, sigma, batch_size, dim, split_len, k)
     #return K.square(leak_upper_bound/(np.log(2)*k))
     return leak_upper_bound/(np.log(2)*k)
 
@@ -263,8 +266,8 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
     test_set = [test_info, test_rnd]
     target_eve = np.zeros((len(info_train), n))
     #_weights = np.linspace(0.5, .01, 3)
-    #_weights = np.linspace(0.7, 0.2, 8)
-    _weights = np.linspace(0, 1, 11)
+    #_weights = np.linspace(0.7, 0.2, 7)
+    _weights = np.linspace(1, 0, 6)
     #_weights = np.logspace(np.log10(.25), -4, 20)
     loss_weights = [[1.-k, k] for k in _weights]
     #loss_weights.append([1, 0])
@@ -289,7 +292,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         checkpoint = callbacks.ModelCheckpoint(checkpoint_path, 'loss', save_weights_only=True,
                                                period=5000)
         history = model.fit([info_train, rnd_train], [info_train, target_eve],
-                            epochs=500000, verbose=0, shuffle=False, 
+                            epochs=300000, verbose=0, shuffle=False, 
                             batch_size=len(info_train), callbacks=[checkpoint])
         print("Finished training...")
         pred = model.predict(test_set)[0] # Noise is added during testing
