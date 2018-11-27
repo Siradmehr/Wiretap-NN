@@ -1,9 +1,11 @@
 import os.path
 import pickle
 
+from joblib import cpu_count
 import numpy as np
 from scipy.stats import multivariate_normal
 from sklearn.metrics import hamming_loss
+import tensorflow as tf
 from keras import models
 from keras import layers
 from keras import optimizers
@@ -13,6 +15,21 @@ from keras import backend as K
 
 from digcommpy import messages, metrics
 from digcommpy import information_theory as it
+
+GPU = False
+num_cores = cpu_count()
+if GPU:
+    num_GPU = 1
+    num_CPU = 1
+else:
+    num_GPU = 0
+    num_CPU = 1
+config =tf.ConfigProto(intra_op_parallelism_threads=num_cores,
+    inter_op_parallelism_threads=num_cores, allow_soft_placement=True,
+    device_count = {'CPU' : num_CPU, 'GPU' : num_GPU})
+session = tf.Session(config=config)
+K.set_session(session)
+
 
 DIRNAME = "n{n}k{k}r{r}-B{bob}E{eve}T{train}-{ts}"
 
