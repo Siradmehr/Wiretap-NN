@@ -209,6 +209,14 @@ def tensor_norm_pdf(x, mu, sigma):
     _exp = K.exp(-.5*_exponent)
     return _factor*_exp
 
+def loss_distance_cluster_mean(y_true, y_pred, k, r, dim):
+    codewords = K.reshape(y_pred, (2**k, 2**r, dim))
+    cluster_centers = K.mean(codewords, axis=0, keepdims=True)
+    distance_to_centers = codewords - cluster_centers
+    distance_to_centers = K.sum(distance_to_centers*distance_to_centers, axis=-1)
+    dist_of_centers = K.sum(cluster_centers*cluster_centers, axis=1)
+    return K.max(distance_to_centers) - K.min(dist_of_centers)
+
 def create_model(code_length:int =16, info_length: int =4, activation='relu',
                  symmetrical=True, loss_weights=[.5, .5],
                  train_snr={'bob': 0., 'eve': -5.}, random_length=3,
@@ -248,9 +256,10 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     model.compile(optimizer, loss_weights=loss_weights,
                   #loss=['mse', lambda x, y: loss_leakage_gauss_mix(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'])])
                   #loss=['mse', lambda x, y: loss_leakage_with_gap(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'])])
-                  loss=['mse', lambda x, y: K.square(loss_leakage_upper(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve']))])
+                  #loss=['mse', lambda x, y: K.square(loss_leakage_upper(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve']))])
                   #loss=[lambda x, y: loss_log_mse(x, y, weight=1./loss_weights[0]),
                   #      lambda x, y: loss_log_leak(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'], weight=1./loss_weights[1])])
+                  loss=['mse', lambda x, y: loss_distance_cluster_mean(x, y, info_length, random_length, code_length)])
     return model
 
 def _ebn0_to_esn0(snr, rate=1.):
@@ -284,7 +293,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
     target_eve = np.zeros((len(info_train), n))
     #_weights = np.linspace(0.5, .01, 3)
     #_weights = np.linspace(0.7, 0.2, 7)
-    _weights = np.linspace(1, 0, 6)
+    _weights = np.linspace(1, 0, 10)
     #_weights = np.logspace(np.log10(.25), -4, 20)
     loss_weights = [[1.-k, k] for k in _weights]
     #loss_weights.append([1, 0])
@@ -309,7 +318,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         checkpoint = callbacks.ModelCheckpoint(checkpoint_path, 'loss', save_weights_only=True,
                                                period=5000)
         history = model.fit([info_train, rnd_train], [info_train, target_eve],
-                            epochs=300000, verbose=0, shuffle=False, 
+                            epochs=10000, verbose=0, shuffle=False, 
                             batch_size=len(info_train), callbacks=[checkpoint])
         print("Finished training...")
         pred = model.predict(test_set)[0] # Noise is added during testing
@@ -335,8 +344,8 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
                     int(leak/k*100), int(bler*100))
             _model_path = os.path.join(dirname, _model_path)
             model.save(_model_path+".model", include_optimizer=False)
-            with open(_model_path+'.hist', 'wb') as _hist_file:
-                pickle.dump(history.history, _hist_file)
+            #with open(_model_path+'.hist', 'wb') as _hist_file:
+            #    pickle.dump(history.history, _hist_file)
     return history, model
 
 def _save_codebook(model, info_length, random_length, combination, dirname='.'):
