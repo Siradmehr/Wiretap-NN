@@ -1,6 +1,6 @@
 import numpy as np
 from keras import backend as K
-from autoencoder_wiretap import loss_distance_cluster_mean
+from autoencoder_wiretap import loss_distance_cluster_mean, loss_distance_cluster
 
 n = 3
 k = 2
@@ -16,5 +16,6 @@ print(d)
 
 
 x = K.variable(x)
-m = loss_distance_cluster_mean(0, x, k, r, n, 2**(k+r))
+#m = loss_distance_cluster_mean(0, x, k, r, n)
+m = loss_distance_cluster(0, x, k, r, n)
 print(K.eval(m))

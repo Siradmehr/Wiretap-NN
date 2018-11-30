@@ -217,6 +217,15 @@ def loss_distance_cluster_mean(y_true, y_pred, k, r, dim):
     dist_of_centers = K.sum(cluster_centers*cluster_centers, axis=1)
     return K.max(distance_to_centers) - K.min(dist_of_centers)
 
+def loss_distance_cluster(y_true, y_pred, k, r, dim):
+    codewords = K.reshape(y_pred, (2**k, 2**r, dim))
+    cw_repeat = K.repeat_elements(codewords, 2**k, 0)
+    cw_tile = K.tile(codewords, (2**k, 1, 1))
+    distances = cw_repeat - cw_tile
+    distances = K.sum(distances*distances, axis=-1)
+    distances_clusters = K.max(distances, axis=0)
+    return K.mean(distances_clusters)
+
 def create_model(code_length:int =16, info_length: int =4, activation='relu',
                  symmetrical=True, loss_weights=[.5, .5],
                  train_snr={'bob': 0., 'eve': -5.}, random_length=3,
@@ -259,7 +268,7 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
                   #loss=['mse', lambda x, y: K.square(loss_leakage_upper(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve']))])
                   #loss=[lambda x, y: loss_log_mse(x, y, weight=1./loss_weights[0]),
                   #      lambda x, y: loss_log_leak(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'], weight=1./loss_weights[1])])
-                  loss=['mse', lambda x, y: loss_distance_cluster_mean(x, y, info_length, random_length, code_length)])
+                  loss=['mse', lambda x, y: K.square(loss_distance_cluster(x, y, info_length, random_length, code_length))])
     return model
 
 def _ebn0_to_esn0(snr, rate=1.):
