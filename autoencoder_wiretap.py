@@ -242,10 +242,11 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
                     for k, v in train_noise.items()}
     if symmetrical:
         nodes_dec = reversed(nodes_enc)
-    main_input = layers.Input(shape=(info_length,))
-    random_input = layers.Input(shape=(random_length,), name='random_input')
-    random_bits = BinaryNoise(input_shape=(random_length,))(random_input)
-    input_layer = layers.concatenate([main_input, random_bits])
+    main_input = layers.Input(shape=(info_length+random_length,))
+    #random_input = layers.Input(shape=(random_length,), name='random_input')
+    #random_bits = BinaryNoise(input_shape=(random_length,))(random_input)
+    #input_layer = layers.concatenate([main_input, random_bits])
+    input_layer = main_input
     layer_list_enc = [input_layer]
     for idx, _nodes in enumerate(nodes_enc):
         _new_layer = layers.Dense(_nodes, activation=activation)(layer_list_enc[idx])
@@ -258,17 +259,17 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     for idx, _nodes in enumerate(nodes_dec):
         _new_layer = layers.Dense(_nodes, activation=activation)(layer_list_decoder[idx])
         layer_list_decoder.append(_new_layer)
-    output_layer_bob = layers.Dense(info_length, activation='sigmoid',
+    output_layer_bob = layers.Dense(info_length+random_length, activation='sigmoid',
                                     name='output_bob')(layer_list_decoder[-1])
-    model = models.Model(inputs=[main_input, random_input],
+    model = models.Model(inputs=main_input, #inputs=[main_input, random_input],
                          outputs=[output_layer_bob, layer_list_enc[-1]])
     model.compile(optimizer, loss_weights=loss_weights,
                   #loss=['mse', lambda x, y: loss_leakage_gauss_mix(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'])])
                   #loss=['mse', lambda x, y: loss_leakage_with_gap(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'])])
-                  #loss=['mse', lambda x, y: K.square(loss_leakage_upper(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve']))])
+                  loss=['mse', lambda x, y: K.square(loss_leakage_upper(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve']))])
                   #loss=[lambda x, y: loss_log_mse(x, y, weight=1./loss_weights[0]),
                   #      lambda x, y: loss_log_leak(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'], weight=1./loss_weights[1])])
-                  loss=['mse', lambda x, y: K.square(loss_distance_cluster(x, y, info_length, random_length, code_length))])
+                  #loss=['mse', lambda x, y: K.square(loss_distance_cluster(x, y, info_length, random_length, code_length))])
     return model
 
 def _ebn0_to_esn0(snr, rate=1.):
@@ -293,16 +294,18 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
             nodes_enc, nodes_dec, optimizer_config))
     info_book = messages.generate_data(k, binary=True)
     info_train = messages.generate_data(k+random_length, number=None, binary=True)
-    info_train = info_train[:, :k]
-    rnd_train = np.zeros((2**(random_length+k), random_length))
-    test_info = messages.generate_data(k, number=test_size, binary=True)
-    test_rnd = messages.generate_data(random_length, number=test_size,
-                                      binary=True)
-    test_set = [test_info, test_rnd]
+    #info_train = info_train[:, :k]
+    #rnd_train = np.zeros((2**(random_length+k), random_length))
+    #test_info = messages.generate_data(k, number=test_size, binary=True)
+    #test_rnd = messages.generate_data(random_length, number=test_size,
+    #                                  binary=True)
+    #test_set = [test_info, test_rnd]
+    test_set = messages.generate_data(k+random_length, number=test_size, binary=True)
+    test_info = test_set
     target_eve = np.zeros((len(info_train), n))
     #_weights = np.linspace(0.5, .01, 3)
     #_weights = np.linspace(0.7, 0.2, 7)
-    _weights = np.linspace(1, 0, 10)
+    _weights = np.linspace(.8, 0, 5)
     #_weights = np.logspace(np.log10(.25), -4, 20)
     loss_weights = [[1.-k, k] for k in _weights]
     #loss_weights.append([1, 0])
@@ -326,14 +329,15 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         checkpoint_path = os.path.join(dirname, checkpoint_path)
         checkpoint = callbacks.ModelCheckpoint(checkpoint_path, 'loss', save_weights_only=True,
                                                period=5000)
-        history = model.fit([info_train, rnd_train], [info_train, target_eve],
+        #history = model.fit([info_train, rnd_train], [info_train, target_eve],
+        history = model.fit(info_train, [info_train, target_eve],
                             epochs=10000, verbose=0, shuffle=False, 
                             batch_size=len(info_train), callbacks=[checkpoint])
         print("Finished training...")
         pred = model.predict(test_set)[0] # Noise is added during testing
         pred_bit = np.round(pred)
-        ber = metrics.ber(test_info, pred_bit)
-        bler = metrics.bler(test_info, pred_bit)
+        ber = metrics.ber(test_info[:, :k], pred_bit[:, :k])
+        bler = metrics.bler(test_info[:, :k], pred_bit[:, :k])
         #leak = history.history['codewords_loss'][-1]
         total_loss = history.history['loss'][-1]
         print("BER:\t{}".format(ber))
@@ -364,7 +368,8 @@ def _save_codebook(model, info_length, random_length, combination, dirname='.'):
     encoder_out_layer = model.get_layer("codewords")
     layer_output_func = K.function([*model.inputs, K.learning_phase()],
                                    [encoder_out_layer.output])
-    codewords = layer_output_func([info, rand, 0])[0]
+    #codewords = layer_output_func([info, rand, 0])[0]
+    codewords = layer_output_func([_all_cw, 0])[0]
     results_file = "codewords-{}.dat".format(combination)
     results_file = os.path.join(dirname, results_file)
     with open(results_file, 'w') as outf:
