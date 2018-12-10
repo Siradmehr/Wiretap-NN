@@ -215,7 +215,8 @@ def loss_distance_cluster_mean(y_true, y_pred, k, r, dim):
     distance_to_centers = codewords - cluster_centers
     distance_to_centers = K.sum(distance_to_centers*distance_to_centers, axis=-1)
     dist_of_centers = K.sum(cluster_centers*cluster_centers, axis=1)
-    return K.max(distance_to_centers) - K.min(dist_of_centers)
+    #return K.max(distance_to_centers) - K.min(dist_of_centers)
+    return K.max(distance_to_centers)# - K.min(dist_of_centers)
 
 def loss_distance_cluster(y_true, y_pred, k, r, dim):
     codewords = K.reshape(y_pred, (2**k, 2**r, dim))
@@ -225,6 +226,12 @@ def loss_distance_cluster(y_true, y_pred, k, r, dim):
     distances = K.sum(distances*distances, axis=-1)
     distances_clusters = K.max(distances, axis=0)
     return K.mean(distances_clusters)
+
+def loss_distance_leakage_combined(y_true, y_pred, k, r, dim, noise_pow=.5):
+    _leak = loss_leakage_upper(y_true, y_pred, k, r, dim, noise_pow=noise_pow)
+    _dist = loss_distance_cluster(y_true, y_pred, k, r, dim)
+    #return (_dist + _leak*np.log(2)*k)*.5
+    return K.sqrt(_dist*_leak)
 
 def create_model(code_length:int =16, info_length: int =4, activation='relu',
                  symmetrical=True, loss_weights=[.5, .5],
@@ -266,10 +273,11 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
     model.compile(optimizer, loss_weights=loss_weights,
                   #loss=['mse', lambda x, y: loss_leakage_gauss_mix(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'])])
                   #loss=['mse', lambda x, y: loss_leakage_with_gap(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'])])
-                  loss=['mse', lambda x, y: K.square(loss_leakage_upper(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve']))])
+                  #loss=['mse', lambda x, y: K.square(loss_leakage_upper(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve']))])
                   #loss=[lambda x, y: loss_log_mse(x, y, weight=1./loss_weights[0]),
                   #      lambda x, y: loss_log_leak(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'], weight=1./loss_weights[1])])
-                  #loss=['mse', lambda x, y: K.square(loss_distance_cluster(x, y, info_length, random_length, code_length))])
+                  #loss=['mse', lambda x, y: loss_distance_cluster(x, y, info_length, random_length, code_length)])
+                  loss=['mse', lambda x, y: loss_distance_leakage_combined(x, y, info_length, random_length, code_length, train_noise['eve'])])
     return model
 
 def _ebn0_to_esn0(snr, rate=1.):
@@ -305,9 +313,10 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
     target_eve = np.zeros((len(info_train), n))
     #_weights = np.linspace(0.5, .01, 3)
     #_weights = np.linspace(0.7, 0.2, 7)
-    _weights = np.linspace(.8, 0, 5)
-    #_weights = np.logspace(np.log10(.25), -4, 20)
-    loss_weights = [[1.-k, k] for k in _weights]
+    #_weights = np.linspace(.2, .4, 4)
+    _weights = np.logspace(-3, -1, 5)
+    #_weights = np.logspace(-6, -4, 5)
+    loss_weights = [[1.-k, k] for k in reversed(_weights)]
     #loss_weights.append([1, 0])
     #loss_weights = [[0.8675, .1325]]
     results_file = 'lwc-B{bob}E{eve}-T{0}-n{1}-k{2}-r{3}.dat'.format(
@@ -331,7 +340,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
                                                period=5000)
         #history = model.fit([info_train, rnd_train], [info_train, target_eve],
         history = model.fit(info_train, [info_train, target_eve],
-                            epochs=10000, verbose=0, shuffle=False, 
+                            epochs=300000, verbose=0, shuffle=False, 
                             batch_size=len(info_train), callbacks=[checkpoint])
         print("Finished training...")
         pred = model.predict(test_set)[0] # Noise is added during testing
@@ -342,7 +351,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         total_loss = history.history['loss'][-1]
         print("BER:\t{}".format(ber))
         print("BLER:\t{}".format(bler))
-        #print("Leak:\t{}".format(leak*k))
+        print("Loss_E:\t{}".format(history.history['codewords_loss'][-1]))
         print("Loss:\t{}".format(total_loss))
         codebook = _save_codebook(model, k, random_length, combination, dirname)
         energy_symbol = np.var(codebook[2])
