@@ -224,7 +224,8 @@ def loss_distance_cluster(y_true, y_pred, k, r, dim):
     cw_tile = K.tile(codewords, (2**k, 1, 1))
     distances = cw_repeat - cw_tile
     distances = K.sum(distances*distances, axis=-1)
-    distances_clusters = K.max(distances, axis=0)
+    #distances_clusters = K.max(distances, axis=0)
+    distances_clusters = K.mean(distances, axis=0)
     return K.mean(distances_clusters)
 
 def loss_distance_leakage_combined(y_true, y_pred, k, r, dim, noise_pow=.5):
@@ -276,8 +277,8 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
                   #loss=['mse', lambda x, y: K.square(loss_leakage_upper(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve']))])
                   #loss=[lambda x, y: loss_log_mse(x, y, weight=1./loss_weights[0]),
                   #      lambda x, y: loss_log_leak(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'], weight=1./loss_weights[1])])
-                  #loss=['mse', lambda x, y: loss_distance_cluster(x, y, info_length, random_length, code_length)])
-                  loss=['mse', lambda x, y: loss_distance_leakage_combined(x, y, info_length, random_length, code_length, train_noise['eve'])])
+                  loss=['mse', lambda x, y: loss_distance_cluster(x, y, info_length, random_length, code_length)])
+                  #loss=['mse', lambda x, y: loss_distance_leakage_combined(x, y, info_length, random_length, code_length, train_noise['eve'])])
     return model
 
 def _ebn0_to_esn0(snr, rate=1.):
@@ -313,8 +314,8 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
     target_eve = np.zeros((len(info_train), n))
     #_weights = np.linspace(0.5, .01, 3)
     #_weights = np.linspace(0.7, 0.2, 7)
-    #_weights = np.linspace(.2, .4, 4)
-    _weights = np.logspace(-3, -1, 5)
+    #_weights = np.linspace(.8, .2, 4)
+    _weights = np.logspace(-4, -2, 5)
     #_weights = np.logspace(-6, -4, 5)
     loss_weights = [[1.-k, k] for k in reversed(_weights)]
     #loss_weights.append([1, 0])
