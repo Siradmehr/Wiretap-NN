@@ -1,5 +1,6 @@
 import numpy as np
 from keras import backend as K
+from keras import models, layers
 import tensorflow as tf
 
 def loss_taylor_expansion_gm(y_true, y_pred, k, r, dim, noise_pow=.5):
@@ -12,7 +13,7 @@ def loss_taylor_expansion_gm(y_true, y_pred, k, r, dim, noise_pow=.5):
         _y_pred_message = y_pred[message*split_len:(message+1)*split_len, :]
         _entr_zm = _entropy_gm_taylor_expansion(_y_pred_message, sigma, split_len)
         entr_zm.append(_entr_zm)
-    entr_zm = K.concatenate(entr_zm, axis=0)
+    entr_zm = K.stack(entr_zm, axis=0)
     entr_zm = K.mean(entr_zm)
     return K.mean(entr_z - entr_zm)/(np.log(2)*k)
 
@@ -24,7 +25,7 @@ def _entropy_gm_taylor_expansion(mu, sigma, num_comp):
         mu_i = K.expand_dims(mu[component, :], axis=0)
         _cap_f = _gm_capital_f(mu_i, mu, sigma, num_comp)
         result.append(tf.linalg.trace(_cap_f))
-    result = K.concatenate(result, axis=0)
+    result = K.stack(result, axis=0)
     result = K.mean(result)
     result = entr_zero_ord - .5*noise_pow*result
     return result
@@ -46,7 +47,8 @@ def _gm_capital_f(x, mu, sigma, num_comp):
     for component in range(num_comp):
         mu_i = K.expand_dims(mu[component, :], axis=0)
         _pdf_norm = tensor_norm_pdf(x, mu_i, sigma)
-        _part1 = K.dot(tf.linalg.transpose(x-mu_i), tensor_gradient_gm(x, mu, sigma, num_comp))
+        _grad = tensor_gradient_gm(x, mu, sigma, num_comp)
+        _part1 = K.dot(tf.linalg.transpose(x-mu_i), _grad)
         _part2 = 1./noise_pow * K.dot(tf.linalg.transpose(x-mu_i), x-mu_i)
         _result = (_part1 + _part2 - K.eye(dim))*_pdf_norm
         results.append(_result)
@@ -61,8 +63,9 @@ def tensor_gradient_gm(x, mu, sigma, num_comp):
         mu_i = K.expand_dims(mu[component, :], axis=0)
         _grad = (x-mu_i)*tensor_norm_pdf(x, mu_i, sigma)
         result.append(_grad)
-    result = K.concatenate(result, axis=0)
-    result = K.mean(result)
+    result = K.stack(result, axis=-1)
+    #result = K.concatenate(result, axis=0)
+    result = K.mean(result, axis=-1)
     return result
 
 def tensor_gm_pdf(x, mu, sigma, num_comp):
@@ -97,9 +100,14 @@ def tensor_norm_pdf_exponent(x, mu, sigma):
 
 def main():
     x = np.array([[1, 2, 3], [4, 5, 6], [-1, -2, 1], [2, 1, 0]])
-    x = K.variable(x)
-    leak_upper = loss_taylor_expansion_gm(0, x, 1, 1, 3, .25)
-    print(K.eval(leak_upper))
+    #x = K.variable(x)
+    #leak_upper = loss_taylor_expansion_gm(0, x, 1, 1, 3, .25)
+    #print(K.eval(leak_upper))
+    model = models.Sequential()
+    model.add(layers.Dense(5, input_shape=(3,)))
+    model.compile('adam', loss=lambda a, b: loss_taylor_expansion_gm(a, b, 1, 1, 5, .25))
+    model.fit(x, np.random.randn(4, 5), epochs=4)
+
 
 if __name__ == "__main__":
     main()
