@@ -160,6 +160,123 @@ def loss_gauss_mix_entropy(y_true, y_pred, batch_size, dim, noise_pow=.5, k=1):
     entr_noise = .5*dim*np.log(2*np.pi*np.e*noise_pow)
     return K.mean(entr_gauss_mix - entr_noise, axis=-1)/(np.log(2)*k)
 
+def loss_hershey_olsen_bound(y_true, y_pred, k, r, dim, noise_pow=.5):
+    batch_size = int(2**(r+k))
+    split_len = int(2**r)
+    #sigma = noise_pow * np.eye(dim)
+    results = []
+    y_pred_rep = K.repeat_elements(y_pred, split_len, 0)
+    for message in range(2**k):
+        _y_pred_message = y_pred[message*split_len:(message+1)*split_len, :]
+        _y_pred_message = K.tile(_y_pred_message, (batch_size, 1))
+        _kl = 1./(2*noise_pow)*K.batch_dot(_y_pred_message-y_pred_rep, _y_pred_message-y_pred_rep, axes=1)
+        results.append(_kl)
+    results = K.concatenate(results, axis=0)
+    result = K.mean(results, axis=0)
+    result = result/(batch_size*split_len)
+    return result
+
+def _kl_gaussian(mu, noise_power, batch_size, r, eps):
+    weight = 1./batch_size
+    p_i = K.repeat_elements(mu, batch_size, axis=0)
+    p_j = K.tile(mu, (batch_size, 1))
+    kl = 1./(2*noise_power)*K.batch_dot(p_i-p_j, p_i-p_j, axes=1)
+    kl = K.reshape(kl, (batch_size, batch_size, -1))
+    log_inner = np.log(weight) + K.logsumexp(-kl, axis=1, keepdims=True)
+    outer_sum = K.sum(weight*log_inner, axis=0)
+    mi_upper = -outer_sum - r + eps
+    return mi_upper
+
+
+def loss_taylor_expansion_gm(y_true, y_pred, k, r, dim, noise_pow=.5):
+    sigma = np.eye(dim)*noise_pow
+    batch_size = int(2**(r+k))
+    split_len = int(2**r)
+    entr_z = _entropy_gm_taylor_expansion(y_pred, sigma, batch_size)
+    entr_zm = []
+    for message in range(2**k):
+        _y_pred_message = y_pred[message*split_len:(message+1)*split_len, :]
+        _entr_zm = _entropy_gm_taylor_expansion(_y_pred_message, sigma, split_len)
+        entr_zm.append(_entr_zm)
+    entr_zm = K.stack(entr_zm, axis=0)
+    entr_zm = K.mean(entr_zm)
+    return K.mean(entr_z - entr_zm)/(np.log(2)*k)
+
+def _entropy_gm_taylor_expansion(mu, sigma, num_comp):
+    noise_pow = sigma[0][0]
+    entr_zero_ord = _entropy_gm_taylor_zero(mu, sigma, num_comp)
+    result = []
+    for component in range(num_comp):
+        mu_i = K.expand_dims(mu[component, :], axis=0)
+        _cap_f = _gm_capital_f(mu_i, mu, sigma, num_comp)
+        result.append(tf.linalg.trace(_cap_f))
+    result = K.stack(result, axis=0)
+    result = K.mean(result)
+    result = entr_zero_ord - .5*noise_pow*result
+    return result
+
+def _entropy_gm_taylor_zero(mu, sigma, num_comp):
+    log_pdfs = []
+    for message in range(num_comp):
+        mu_i = K.expand_dims(mu[message, :], axis=0)
+        _log_pdf = tensor_gm_logpdf(mu_i, mu, sigma, num_comp)
+        log_pdfs.append(_log_pdf)
+    log_pdfs = K.stack(log_pdfs, axis=0)
+    return -K.mean(log_pdfs)
+
+def _gm_capital_f(x, mu, sigma, num_comp):
+    noise_pow = sigma[0][0]
+    dim = np.shape(sigma)[0]
+    pdf_gm = tensor_gm_pdf(x, mu, sigma, num_comp)
+    results = []
+    for component in range(num_comp):
+        mu_i = K.expand_dims(mu[component, :], axis=0)
+        _pdf_norm = tensor_norm_pdf(x, mu_i, sigma)
+        _grad = tensor_gradient_gm(x, mu, sigma, num_comp)
+        _part1 = K.dot(tf.linalg.transpose(x-mu_i), _grad)
+        _part2 = 1./noise_pow * K.dot(tf.linalg.transpose(x-mu_i), x-mu_i)
+        _result = (_part1 + _part2 - K.eye(dim))*_pdf_norm
+        results.append(_result)
+    results = K.stack(results, axis=2)
+    result = K.mean(results, axis=2)
+    return result/(pdf_gm*noise_pow)
+
+def tensor_gradient_gm(x, mu, sigma, num_comp):
+    noise_pow = sigma[0][0]
+    result = []
+    for component in range(num_comp):
+        mu_i = K.expand_dims(mu[component, :], axis=0)
+        _grad = (x-mu_i)*tensor_norm_pdf(x, mu_i, sigma)
+        result.append(_grad)
+    result = K.stack(result, axis=-1)
+    #result = K.concatenate(result, axis=0)
+    result = K.mean(result, axis=-1)
+    return result
+
+def tensor_gm_pdf(x, mu, sigma, num_comp):
+    dim = np.shape(sigma)[0]
+    x = K.repeat_elements(x, num_comp, 0)
+    _pdf_exp = tensor_norm_pdf_exponent(x, mu, sigma)
+    factor = (1./num_comp)/(np.sqrt(2*np.pi*sigma[0][0])**dim)
+    pdf = factor * K.sum(K.exp(_pdf_exp))
+    return pdf
+
+def tensor_gm_logpdf(x, mu, sigma, num_comp):
+    dim = np.shape(sigma)[0]
+    x = K.repeat_elements(x, num_comp, 0)
+    _pdf_exp = tensor_norm_pdf_exponent(x, mu, sigma)
+    factor = K.constant((1./num_comp)/(np.sqrt(2*np.pi*sigma[0][0])**dim), dtype='float32')
+    pdf = K.log(factor) + K.logsumexp(_pdf_exp)
+    return pdf
+
+def tensor_norm_pdf(x, mu, sigma):
+    dim = np.shape(sigma)[0]
+    _pdf_exp = tensor_norm_pdf_exponent(x, mu, sigma)
+    factor = 1./(np.sqrt(2*np.pi*sigma[0][0])**dim)
+    pdf = factor * K.sum(K.exp(_pdf_exp))
+    return pdf
+
+
 def tensor_entropy_gauss_mix_upper(mu, sig, batch_size, dim=None):
     """Calculate the upper bound of the gaussian mixture entropy using the 
     KL-divergence as distance (Kolchinsky et al, 2017)
@@ -277,7 +394,9 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
                   #loss=['mse', lambda x, y: K.square(loss_leakage_upper(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve']))])
                   #loss=[lambda x, y: loss_log_mse(x, y, weight=1./loss_weights[0]),
                   #      lambda x, y: loss_log_leak(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'], weight=1./loss_weights[1])])
-                  loss=['mse', lambda x, y: loss_distance_cluster(x, y, info_length, random_length, code_length)])
+                  #loss=['mse', lambda x, y: K.square(loss_distance_cluster(x, y, info_length, random_length, code_length))])
+                  #loss=['mse', lambda x, y: K.square(loss_hershey_olsen_bound(x, y, info_length, random_length, code_length, train_noise['eve']))])
+                  loss=['mse', lambda x, y: K.square(loss_taylor_expansion_gm(x, y, info_length, random_length, code_length, train_noise['eve']))])
                   #loss=['mse', lambda x, y: loss_distance_leakage_combined(x, y, info_length, random_length, code_length, train_noise['eve'])])
     return model
 
@@ -314,8 +433,8 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
     target_eve = np.zeros((len(info_train), n))
     #_weights = np.linspace(0.5, .01, 3)
     #_weights = np.linspace(0.7, 0.2, 7)
-    #_weights = np.linspace(.8, .2, 4)
-    _weights = np.logspace(-4, -2, 5)
+    _weights = np.linspace(.8, .2, 4)
+    #_weights = np.logspace(-4, -2, 5)
     #_weights = np.logspace(-6, -4, 5)
     loss_weights = [[1.-k, k] for k in reversed(_weights)]
     #loss_weights.append([1, 0])
@@ -330,7 +449,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         optimizer = optimizers.Adam.from_config(optimizer_config)
         #optimizer = optimizers.Adadelta.from_config(optimizer_config)
         model = create_model(n, k, symmetrical=False, loss_weights=combination,
-                             train_snr=train_snr, activation='sigmoid',
+                             train_snr=train_snr, activation='relu',
                              random_length=random_length, nodes_enc=nodes_enc,
                              nodes_dec=nodes_dec, test_snr=test_snr,
                              optimizer=optimizer)
