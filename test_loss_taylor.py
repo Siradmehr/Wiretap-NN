@@ -55,7 +55,7 @@ def _gm_capital_f(x, mu, sigma, num_comp):
     _xm = K.expand_dims(x-mu, axis=3)
     _part1 = K.batch_dot(_xm, _grad, axes=3)  # X x M x N x N
     _pdf_gm = K.expand_dims(K.expand_dims(K.expand_dims(pdf_gm)))
-    _part1 = _part1/pdf_gm  # X x M x N x N
+    _part1 = _part1/_pdf_gm  # X x M x N x N
     _part2 = K.batch_dot(_xm, _xm, axes=3)/noise_pow
     _eye = K.expand_dims(K.expand_dims(K.eye(dim), 0), 0)
     _result = _part1 + _part2 - _eye
@@ -81,8 +81,8 @@ def _gm_capital_f(x, mu, sigma, num_comp):
 
 def tensor_gradient_gm(x, mu, sigma, num_comp):
     noise_pow = sigma[0][0]
-    _grad = (x-mu)*_tensor_norm_pdf(x, mu, sigma)
-    grad = K.mean(axis=1) # 
+    _grad = (x-mu)*K.expand_dims(_tensor_norm_pdf(x, mu, sigma))
+    grad = K.mean(_grad, axis=1) # 
     #result = []
     #for component in range(num_comp):
     #    mu_i = K.expand_dims(mu[component, :], axis=0)
