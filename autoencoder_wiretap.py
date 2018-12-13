@@ -16,6 +16,8 @@ from keras import backend as K
 from digcommpy import messages, metrics
 from digcommpy import information_theory as it
 
+from test_loss_taylor import loss_taylor_expansion_gm
+
 GPU = False
 num_cores = cpu_count()
 if GPU:
@@ -186,72 +188,6 @@ def _kl_gaussian(mu, noise_power, batch_size, r, eps):
     outer_sum = K.sum(weight*log_inner, axis=0)
     mi_upper = -outer_sum - r + eps
     return mi_upper
-
-
-def loss_taylor_expansion_gm(y_true, y_pred, k, r, dim, noise_pow=.5):
-    sigma = np.eye(dim)*noise_pow
-    batch_size = int(2**(r+k))
-    split_len = int(2**r)
-    entr_z = _entropy_gm_taylor_expansion(y_pred, sigma, batch_size)
-    entr_zm = []
-    for message in range(2**k):
-        _y_pred_message = y_pred[message*split_len:(message+1)*split_len, :]
-        _entr_zm = _entropy_gm_taylor_expansion(_y_pred_message, sigma, split_len)
-        entr_zm.append(_entr_zm)
-    entr_zm = K.stack(entr_zm, axis=0)
-    entr_zm = K.mean(entr_zm)
-    return K.mean(entr_z - entr_zm)/(np.log(2)*k)
-
-def _entropy_gm_taylor_expansion(mu, sigma, num_comp):
-    noise_pow = sigma[0][0]
-    entr_zero_ord = _entropy_gm_taylor_zero(mu, sigma, num_comp)
-    result = []
-    for component in range(num_comp):
-        mu_i = K.expand_dims(mu[component, :], axis=0)
-        _cap_f = _gm_capital_f(mu_i, mu, sigma, num_comp)
-        result.append(tf.linalg.trace(_cap_f))
-    result = K.stack(result, axis=0)
-    result = K.mean(result)
-    result = entr_zero_ord - .5*noise_pow*result
-    return result
-
-def _entropy_gm_taylor_zero(mu, sigma, num_comp):
-    log_pdfs = []
-    for message in range(num_comp):
-        mu_i = K.expand_dims(mu[message, :], axis=0)
-        _log_pdf = tensor_gm_logpdf(mu_i, mu, sigma, num_comp)
-        log_pdfs.append(_log_pdf)
-    log_pdfs = K.stack(log_pdfs, axis=0)
-    return -K.mean(log_pdfs)
-
-def _gm_capital_f(x, mu, sigma, num_comp):
-    noise_pow = sigma[0][0]
-    dim = np.shape(sigma)[0]
-    pdf_gm = tensor_gm_pdf(x, mu, sigma, num_comp)
-    results = []
-    for component in range(num_comp):
-        mu_i = K.expand_dims(mu[component, :], axis=0)
-        _pdf_norm = tensor_norm_pdf(x, mu_i, sigma)
-        _grad = tensor_gradient_gm(x, mu, sigma, num_comp)
-        _part1 = K.dot(tf.linalg.transpose(x-mu_i), _grad)
-        _part2 = 1./noise_pow * K.dot(tf.linalg.transpose(x-mu_i), x-mu_i)
-        _result = (_part1 + _part2 - K.eye(dim))*_pdf_norm
-        results.append(_result)
-    results = K.stack(results, axis=2)
-    result = K.mean(results, axis=2)
-    return result/(pdf_gm*noise_pow)
-
-def tensor_gradient_gm(x, mu, sigma, num_comp):
-    noise_pow = sigma[0][0]
-    result = []
-    for component in range(num_comp):
-        mu_i = K.expand_dims(mu[component, :], axis=0)
-        _grad = (x-mu_i)*tensor_norm_pdf(x, mu_i, sigma)
-        result.append(_grad)
-    result = K.stack(result, axis=-1)
-    #result = K.concatenate(result, axis=0)
-    result = K.mean(result, axis=-1)
-    return result
 
 def tensor_gm_pdf(x, mu, sigma, num_comp):
     dim = np.shape(sigma)[0]
