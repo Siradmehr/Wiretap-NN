@@ -330,9 +330,9 @@ def create_model(code_length:int =16, info_length: int =4, activation='relu',
                   #loss=['mse', lambda x, y: K.square(loss_leakage_upper(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve']))])
                   #loss=[lambda x, y: loss_log_mse(x, y, weight=1./loss_weights[0]),
                   #      lambda x, y: loss_log_leak(x, y, info_length, random_length, code_length, noise_pow=train_noise['eve'], weight=1./loss_weights[1])])
-                  #loss=['mse', lambda x, y: K.square(loss_distance_cluster(x, y, info_length, random_length, code_length))])
+                  #loss=['mse', lambda x, y: loss_distance_cluster(x, y, info_length, random_length, code_length)])
                   #loss=['mse', lambda x, y: K.square(loss_hershey_olsen_bound(x, y, info_length, random_length, code_length, train_noise['eve']))])
-                  loss=['mse', lambda x, y: K.square(loss_taylor_expansion_gm(x, y, info_length, random_length, code_length, train_noise['eve']))])
+                  loss=['mse', lambda x, y: loss_taylor_expansion_gm(x, y, info_length, random_length, code_length, train_noise['eve'])])
                   #loss=['mse', lambda x, y: loss_distance_leakage_combined(x, y, info_length, random_length, code_length, train_noise['eve'])])
     return model
 
@@ -457,7 +457,10 @@ def calc_wiretap_leakage(info, codewords, noise_var):
 
 if __name__ == "__main__":
     code_length = 16
-    combinations = (([code_length], []), ([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length]))
+    config1 = ([code_length], [])
+    config2 = ([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length])
+    config3 = ([16*code_length, code_length], [16*code_length])
+    combinations = (config1, config2, config3)
     #combinations = (([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length]),)
     #combinations = (([code_length], []),) 
     #combinations = (([16*code_length, code_length], []),)
