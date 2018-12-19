@@ -155,6 +155,9 @@ def loss_log_leak(y_true, y_pred, k, r, dim, noise_pow=.5, weight=1):
     leak_upper_bound = _leak_upper_bound(y_pred, sigma, batch_size, dim, split_len, k)
     return -K.log(weight - leak_upper_bound/(np.log(2)*k))
 
+def loss_log_taylor(y_true, y_pred, k, r, dim, noise_pow, weight=1.):
+    return -K.log(weight - loss_taylor_expansion_gm(y_true, y_pred, k, r, dim, noise_pow))
+
 def loss_gauss_mix_entropy(y_true, y_pred, batch_size, dim, noise_pow=.5, k=1):
     sigma = noise_pow * np.eye(dim)
     entr_gauss_mix = tensor_entropy_gauss_mix_upper(y_pred, sigma, batch_size, dim)
@@ -468,7 +471,10 @@ if __name__ == "__main__":
             train_snr = {'bob': 0., 'eve': -5.}
             opt_conf = optimizers.Adam(amsgrad=False).get_config()
             #opt_conf = optimizers.Adadelta().get_config()
-            history, model = loss_weight_sweep(n=code_length, k=4, train_snr=train_snr,
-            test_snr=0., random_length=3, test_size=1e4, nodes_enc=comb[0],
-            nodes_dec=comb[1], test_snr_eve=-5., optimizer_config=opt_conf,
-            save_model=True)
+            try:
+                history, model = loss_weight_sweep(n=code_length, k=4, train_snr=train_snr,
+                test_snr=0., random_length=3, test_size=1e4, nodes_enc=comb[0],
+                nodes_dec=comb[1], test_snr_eve=-5., optimizer_config=opt_conf,
+                save_model=True)
+            except ValueError:
+                print("Error with network: {}".format(comb))
