@@ -1,4 +1,4 @@
-# Autoencoders for flexible wiretap code design in {Python}
+# Autoencoders for flexible wiretap code design in Python
 
 This Python3 framework allows designing wiretap codes with finite blocklength
 using autoencoders.
