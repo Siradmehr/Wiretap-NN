@@ -4,7 +4,7 @@ import numpy as np
 from digcommpy import messages, decoders, encoders, channels, modulators, metrics
 from digcommpy import information_theory as it
 
-from autoencoder_wiretap import calc_wiretap_leakage
+from autoencoder_wiretap import calc_wiretap_leakage_ub
 
 
 def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
@@ -15,7 +15,7 @@ def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
     k_bob = encoder.info_length_bob
     print("k={}\tk_bob={}".format(k, k_bob))
     modulator = modulators.BpskModulator()
-    channel = channels.BawgnChannel(test_snr, rate=k/n, input_power=1.)
+    channel = channels.BawgnChannel(test_snr, rate=k_bob/n, input_power=1.)
     if alg == "ref":
         decoder = decoders.PolarWiretapDecoder(n, 'BAWGN', snr_bob,
                                                pos_lookup=encoder.pos_lookup)
@@ -25,8 +25,8 @@ def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
     info_book, code_book = encoder.generate_codebook()
     code_book_mod = modulator.modulate_symbols(code_book)
     noise_var_eve = 1./(2*k/n*10.**(snr_eve/10.))
-    write_codebook_files(info_book, code_book_mod)
-    leak = calc_wiretap_leakage(info_book, code_book_mod, noise_var_eve)
+    #write_codebook_files(info_book, code_book_mod)
+    leak = calc_wiretap_leakage_ub(info_book, code_book_mod, noise_var_eve)
     test_set = messages.generate_data(k, number=100000, binary=True)
     test_code = encoder.encode_messages(test_set)
     test_mod = modulator.modulate_symbols(test_code)

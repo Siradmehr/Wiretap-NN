@@ -132,7 +132,7 @@ def loss_weight_sweep(n=16, k=4, train_snr={'bob': 2., 'eve': -5.}, test_snr=0.,
         checkpoint = callbacks.ModelCheckpoint(checkpoint_path, 'loss', save_weights_only=True,
                                                period=5000)
         history = model.fit(info_train, [info_train, target_eve],
-                            epochs=750000, verbose=0, shuffle=False, 
+                            epochs=750, verbose=0, shuffle=False, 
                             batch_size=len(info_train), callbacks=[checkpoint])
         print("Finished training...")
         pred = model.predict(test_set)[0] # Noise is added during testing
