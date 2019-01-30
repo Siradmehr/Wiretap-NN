@@ -13,5 +13,5 @@ A comparison with a polar wiretap code can be found in the script
 `polar_wiretap_comparsion.py`.
 
 The Python script in the `analysis` folder can be used to estimate the entropy 
-of found codebooks, using Monte Carlo simulations. The code is based on from 
+of found codebooks, using Monte Carlo simulations. The code is based on
 [https://github.com/btracey/mixent](https://github.com/btracey/mixent).
