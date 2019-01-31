@@ -1,3 +1,8 @@
+# Autoencoders for flexible wiretap code design in Python
+#
+# Copyright (C) 2019 Karl-Ludwig Besser
+# License: GPL Version 3
+
 from keras import layers
 from keras import backend as K
 

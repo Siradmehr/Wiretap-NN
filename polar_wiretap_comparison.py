@@ -1,3 +1,8 @@
+# Autoencoders for flexible wiretap code design in Python
+#
+# Copyright (C) 2019 Karl-Ludwig Besser
+# License: GPL Version 3
+
 import os.path
 
 import numpy as np
