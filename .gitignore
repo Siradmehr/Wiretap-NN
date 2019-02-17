@@ -39,6 +39,7 @@ report.html
 *.back
 *.bak
 data/
+results/
 
 # OS generated files #
 ######################
@@ -61,4 +62,3 @@ Thumbs.db
 *.swp
 
 Pipfile.lock
-results/
