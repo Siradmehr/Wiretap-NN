@@ -5,7 +5,13 @@ using autoencoders.
 It uses Keras (with Tensorflow backend) for the neural network implementation.
 
 It is part of the TIFS submission "Wiretap Code Design by Neural Network
-Autoencoders".
+Autoencoders". The code used for the initial submission to TIFS can be found in
+the _tifs_ branch. The code used for ICASSP paper "Flexible Design of Finite
+Blocklength Wiretap Codes by Autoencoders" (ICASSP 2019) can be found in the
+_icassp2019_ branch.
+The master branch will hold the latest stable version which might differ from
+the ones used during the paper submissions. Please see the respective branches
+to recreate those results.
 
 ## Usage
 You can simply run the `autoencoder_wiretap.py` script to start a simulation.
