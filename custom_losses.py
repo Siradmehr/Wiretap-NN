@@ -232,10 +232,13 @@ def loss_taylor_expansion_gm(y_true, y_pred, k, r, dim, noise_pow=.5):
 def _entropy_gm_taylor_expansion(mu, sigma, num_comp):
     noise_pow = sigma[0][0]
     entr_zero_ord = _entropy_gm_taylor_zero(mu, sigma, num_comp)
+    #print(K.eval(entr_zero_ord))
     x = K.repeat(mu, num_comp)
     mu = K.permute_dimensions(x, (1, 0, 2))
-    cap_f = _gm_capital_f(x, mu, sigma, num_comp) # X x N x N
+    #cap_f = _gm_capital_f(x, mu, sigma, num_comp) # X x N x N
+    cap_f = _gm_capital_f_log(x, mu, sigma, num_comp) # X x N x N
     cap_f_c = tf.linalg.trace(cap_f) # X
+    print(K.eval(cap_f_c))
     _result = K.mean(cap_f_c)
     result = entr_zero_ord - .5*noise_pow*_result
     return result
@@ -270,7 +273,40 @@ def _gm_capital_f(x, mu, sigma, num_comp):
 def tensor_gradient_gm(x, mu, sigma, num_comp):
     noise_pow = sigma[0][0]
     _grad = (x-mu)*K.expand_dims(_tensor_norm_pdf(x, mu, sigma))
-    grad = K.mean(_grad, axis=1) # 
+    grad = K.mean(_grad, axis=1)
+    return grad
+
+def _gm_capital_f_log(x, mu, sigma, num_comp):
+    noise_pow = sigma[0][0]
+    dim = np.shape(sigma)[0]
+    logpdf_gm = tensor_gm_logpdf(x, mu, sigma, num_comp)
+    _grad = tensor_gradient_gm_div_f(x, mu, sigma, num_comp, logpdf_gm) # X x N
+    _grad = K.expand_dims(_grad, axis=1) # X x 1 x N
+    _grad = K.tile(_grad, (1, num_comp, 1)) # X x M x N
+    _grad = K.expand_dims(_grad, axis=3)
+    _xm = K.expand_dims(x-mu, axis=3)
+    _part1 = K.batch_dot(_xm, _grad, axes=3)  # X x M x N x N
+    _part2 = K.batch_dot(_xm, _xm, axes=3)/noise_pow
+    _eye = K.expand_dims(K.expand_dims(K.eye(dim), 0), 0)
+    _result = _part1 + _part2 - _eye
+    _lognorm = K.expand_dims(K.expand_dims(_tensor_norm_logpdf(x, mu, sigma)))
+    _logpdf_gm = K.expand_dims(K.expand_dims(logpdf_gm))
+    _norm = _lognorm - _logpdf_gm
+    _norm = K.exp(_norm)
+    _result = _result * _norm # X x M x N x N
+    _result = K.mean(_result, axis=1) # X x N x N
+    #result = _result/(K.expand_dims(K.expand_dims(pdf_gm))*noise_pow)
+    result = _result/noise_pow
+    return result
+
+def tensor_gradient_gm_div_f(x, mu, sigma, num_comp, logpdf_gm):
+    noise_pow = sigma[0][0]
+    #_sgn = K.sign(x-mu)
+    #_grad = K.log(K.abs(x-mu)) + K.expand_dims(_tensor_norm_logpdf(x, mu, sigma))
+    logpdf_gm = K.expand_dims(logpdf_gm)
+    _grad = K.expand_dims(_tensor_norm_logpdf(x, mu, sigma)) - logpdf_gm
+    _grad = (x-mu) * K.exp(_grad)
+    grad = K.mean(_grad, axis=1)/noise_pow
     return grad
 
 def _tensor_gm_pdf(x, mu, sigma, num_comp):
@@ -283,8 +319,10 @@ def _tensor_gm_pdf(x, mu, sigma, num_comp):
 def tensor_gm_logpdf(x, mu, sigma, num_comp):
     dim = np.shape(sigma)[0]
     _pdf_exp = _tensor_norm_pdf_exponent(x, mu, sigma)
-    factor = K.constant((1./num_comp)/(np.sqrt(2*np.pi*sigma[0][0])**dim), dtype='float32')
-    pdf = K.log(factor) + K.logsumexp(_pdf_exp, axis=1)
+    #factor = K.constant((1./num_comp)/(np.sqrt(2*np.pi*sigma[0][0])**dim), dtype='float32')
+    #pdf = K.log(factor) + K.logsumexp(_pdf_exp, axis=1)
+    factor = -K.constant(np.log(num_comp)+.5*dim*np.log(2*np.pi*sigma[0][0]), dtype='float32')
+    pdf = factor + K.logsumexp(_pdf_exp, axis=1)
     return pdf
 
 def _tensor_norm_pdf(x, mu, sigma):
@@ -292,6 +330,13 @@ def _tensor_norm_pdf(x, mu, sigma):
     _pdf_exp = _tensor_norm_pdf_exponent(x, mu, sigma)
     factor = 1./(np.sqrt(2*np.pi*sigma[0][0])**dim)
     pdf = factor * K.exp(_pdf_exp)
+    return pdf
+
+def _tensor_norm_logpdf(x, mu, sigma):
+    dim = np.shape(sigma)[0]
+    _pdf_exp = _tensor_norm_pdf_exponent(x, mu, sigma)
+    factor = -.5*dim*np.log(2*np.pi*sigma[0][0])
+    pdf = factor + _pdf_exp
     return pdf
 
 def _tensor_norm_pdf_exponent(x, mu, sigma):
