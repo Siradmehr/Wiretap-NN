@@ -238,7 +238,6 @@ def _entropy_gm_taylor_expansion(mu, sigma, num_comp):
     #cap_f = _gm_capital_f(x, mu, sigma, num_comp) # X x N x N
     cap_f = _gm_capital_f_log(x, mu, sigma, num_comp) # X x N x N
     cap_f_c = tf.linalg.trace(cap_f) # X
-    print(K.eval(cap_f_c))
     _result = K.mean(cap_f_c)
     result = entr_zero_ord - .5*noise_pow*_result
     return result
