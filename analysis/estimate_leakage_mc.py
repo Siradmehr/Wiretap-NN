@@ -35,6 +35,7 @@ def estimate_leakage_from_codebook(codebook, noise_var, samples):
 def calc_leakage_all_codebooks(codebooks, snr, samples):
     num_cores = cpu_count()
     noise_var = 1./(2*10**(snr/10.))
+    print(noise_var)
     for dirpath, dirnames, filenames in os.walk(codebooks):
         with open(os.path.join(dirpath, "leakage-estimate.dat"), 'w') as res_file:
             res_file.write("wB\twE\tLeak\n")
