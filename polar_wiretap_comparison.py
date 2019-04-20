@@ -28,14 +28,14 @@ def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
     else:
         raise NotImplementedError("Only the standard polar decoder is "
                                   "implemented right now.")
-    info_book, code_book = encoder.generate_codebook()
+    info_book, code_book, random_book = encoder.generate_codebook(return_random=True)
     code_book_mod = modulator.modulate_symbols(code_book)
     #noise_var_eve = 1./(2*k/n*10.**(snr_eve/10.))
     noise_var_eve = 1./(2*k_bob/n*10.**(snr_eve/10.))
     #print(noise_var_eve)
-    write_codebook_files(info_book, code_book_mod)
+    write_codebook_files(info_book, code_book_mod, random_book)
     leak = calc_wiretap_leakage_ub(info_book, code_book_mod, noise_var_eve)
-    test_set = messages.generate_data(k, number=1000000, binary=True)
+    test_set = messages.generate_data(k, number=100000, binary=True)
     test_code = encoder.encode_messages(test_set)
     test_mod = modulator.modulate_symbols(test_code)
     rec_mod = channel.transmit_data(test_mod)
@@ -51,18 +51,13 @@ def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
         outf.write("{}\t{}\t{}\n".format(ber, bler, leak))
     return ber, leak, k
 
-def write_codebook_files(messages, codewords):
-    with open("codebook-all.csv", 'w') as outfile:
-        for _message, _codeword in zip(messages, codewords):
-            outfile.write("\"{}\",\"{}\"\n".format(list(_message), list(_codeword)))
-    idx_rev = np.unique(messages, axis=0, return_inverse=True)[1]
-    for num, _mess_idx in enumerate(np.unique(idx_rev)):
-        _idx = np.where(idx_rev == _mess_idx)[0]
-        _relevant_codewords = codewords[_idx]
-        _relevant_message = messages[_idx]
-        with open("codebook-{}.csv".format(num), 'w') as outfile:
-            for _message, _codeword in zip(_relevant_message, _relevant_codewords):
-                outfile.write("\"{}\",\"{}\"\n".format(list(_message), list(_codeword)))
+def write_codebook_files(messages, codewords, random):
+    results_file = "codewords-polar.dat"
+    #results_file = os.path.join(dirname, results_file)
+    with open(results_file, 'w') as outf:
+        outf.write("message\trandom\tcodeword\n")
+        for _info, _rand, _cw in zip(messages, random, codewords):
+            outf.write("{}\t{}\t{}\n".format(list(_info), list(_rand), list(_cw)))
 
 if __name__ == "__main__":
     snr_bob = 0.
