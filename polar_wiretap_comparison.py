@@ -15,7 +15,8 @@ from autoencoder_wiretap import calc_wiretap_leakage_ub
 def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
     channel = "BAWGN"
     encoder = encoders.PolarWiretapEncoder(n, channel, channel,
-                                           snr_bob, snr_eve)
+                                           snr_bob, snr_eve,
+                                           info_length_bob=7, random_length=3)
     k = encoder.info_length
     k_bob = encoder.info_length_bob
     print("k={}\tk_bob={}".format(k, k_bob))
@@ -30,9 +31,10 @@ def main(n=16, k=4, snr_bob=5., snr_eve=0., test_snr=5., alg='ref'):
     info_book, code_book = encoder.generate_codebook()
     code_book_mod = modulator.modulate_symbols(code_book)
     noise_var_eve = 1./(2*k/n*10.**(snr_eve/10.))
-    #write_codebook_files(info_book, code_book_mod)
+    #print(noise_var_eve)
+    write_codebook_files(info_book, code_book_mod)
     leak = calc_wiretap_leakage_ub(info_book, code_book_mod, noise_var_eve)
-    test_set = messages.generate_data(k, number=100000, binary=True)
+    test_set = messages.generate_data(k, number=1000000, binary=True)
     test_code = encoder.encode_messages(test_set)
     test_mod = modulator.modulate_symbols(test_code)
     rec_mod = channel.transmit_data(test_mod)
@@ -64,4 +66,4 @@ def write_codebook_files(messages, codewords):
 if __name__ == "__main__":
     snr_bob = 0.
     snr_eve = -5.
-    results = main(n=16, snr_bob=snr_bob, snr_eve=snr_eve, test_snr=snr_bob, alg='ref')
+    results = main(n=64, snr_bob=snr_bob, snr_eve=snr_eve, test_snr=snr_bob, alg='ref')

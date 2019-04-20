@@ -188,7 +188,7 @@ def calc_wiretap_leakage_ub(info, codewords, noise_var):
     return leak
 
 if __name__ == "__main__":
-    code_length = 16
+    code_length = 64
     config1 = ([code_length], [])
     config2 = ([8*code_length, 4*code_length, code_length], [8*code_length, 4*code_length])
     config3 = ([16*code_length, code_length], [16*code_length])
